@@ -1,0 +1,18 @@
+{:deps true
+ :builds {:demo {:target :browser
+                 :modules {:demo {:init-fn yawn.demo/render}}
+                 :compiler-options {:static-fns true}
+                 :output-dir "public/compiled"
+                 :asset-path "/compiled"
+                 :devtools {:http-port 8020
+                            :http-root "public"}}
+          :test {:target :browser-test
+                 :test-dir "public/compiled/browser-tests"
+                 :ns-regexp "yawn.*-test$"
+                 :compiler-options {:static-fns false
+                                    :elide-asserts true}
+                 :devtools {:http-port 8021
+                            :http-root "public/compiled/browser-tests"}}
+          :emit {:target :browser
+                 :modules {:main {:entries [yawn.emit-test]}}
+                 :output-dir "public/compiled/emit/js"}}}
