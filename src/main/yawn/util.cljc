@@ -62,6 +62,15 @@
     then
     else))
 
+(defmacro if-defined [binding then else]
+  `(let [v# ~(second binding)]
+     (if (~'undefined? v#)
+       ~else
+       (let [~(first binding) v#] ~then))))
+
+(defmacro when-defined [binding then]
+  `(if-defined ~binding ~then nil))
+
 (comment
 
   (defn a-fn []

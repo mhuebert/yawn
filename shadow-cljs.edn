@@ -1,6 +1,6 @@
 {:deps true
  :builds {:demo {:target :browser
-                 :modules {:demo {:init-fn yawn.demo/render}}
+                 :modules {:demo {:init-fn yawn.demo/init}}
                  :compiler-options {:static-fns true}
                  :output-dir "public/compiled"
                  :asset-path "/compiled"

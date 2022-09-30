@@ -1,11 +1,12 @@
 (ns yawn.compiler-test
   (:refer-clojure :exclude [compile])
-  (:require [clojure.test :as t :refer [deftest is are]]
+  (:require [applied-science.js-interop :as j]
+            [clojure.test :as t :refer [deftest is are]]
             [yawn.convert :as convert]
             [yawn.compiler :as compiler]
             [yawn.env :as env]
             [yawn.infer :as infer]
-            [yawn.view :refer [<>]]
+            [yawn.view :as v]
             #?@(:cljs
                 [["react" :as react :refer [Fragment] :rename {createElement rce}]
                  ["react-dom/server" :as rdom]]))
@@ -28,7 +29,7 @@
    (do
      (defn a-fn [] [:div])
      (defn a-constructor []
-       (convert/<> [:div]))))
+       (convert/x [:div]))))
 
 #?(:cljs
    (do
@@ -36,7 +37,7 @@
 
      (comment
 
-      (e '(compiler/<> [:div]))
+      (e '(compiler/x [:div]))
 
       (e '(require '[yawn.env :as env]))
       (e 'env/!compile-opts)
@@ -45,7 +46,7 @@
       (e '(env/def-options opts {}))
 
       (e '(require '[yawn.compiler :as c]))
-      (e '(compiler/<> [:div]))
+      (e '(compiler/x [:div]))
 
       (ns cljs.user)
 
@@ -60,18 +61,18 @@
        (is
         (thrown? js/Error
                  (let [props {:a 1}]
-                   (to-string (compiler/<> [:div props]))))
+                   (to-string (compiler/x [:div props]))))
         "Dynamic props must be annotated for the compiler")
 
        (is
         (= (let [props {:a 1}]
-             (to-string (convert/<> [:div props])))
+             (to-string (convert/x [:div props])))
            "<div a=\"1\"></div>")
         "Interpreter can handle dynamic props")
 
        (are [expr html]
-         (= (to-string (compiler/<> expr))
-            (to-string (convert/<> convert/defaults expr))
+         (= (to-string (compiler/x expr))
+            (to-string (convert/x convert/defaults expr))
             html)
 
          ;; element
@@ -109,10 +110,10 @@
            [:div.a {:class ["b" c]}])
          "<div class=\"a b c\"></div>"
 
-         [:> "div" [:div]]
+         #js["div" nil (v/x #js["div"])]
          "<div><div></div></div>"
 
-         [:<> [:div] [:div]]
+         [:... [:div] [:div]]
          "<div></div><div></div>"
 
          (do [:div])
@@ -135,7 +136,7 @@
 
      (-- "DOM tags are compiled to `react/createElement` calls."
          (compile '[:div])
-         :=> '(.createElement (yawn.react/get-react) "div" nil))
+         :=> '(yawn.react/createElement "div" nil))
 
      (-- "Symbol tags are compiled to function calls"
          (compiler/compile '[my-fn 1 2 3])
@@ -145,20 +146,20 @@
 
      (-- "a literal map is compiled to a prop object"
          (compile '[:span {:class "a"}])
-         :=> '(.createElement (yawn.react/get-react)
-                              "span"
-                              (js-obj "className" "a")))
+         :=> '(yawn.react/createElement
+               "span"
+               (js-obj "className" "a")))
 
      (-- "a symbol or expression in 1st position is treated as a child element"
          (compile '[:span a])
-         :=> '(.createElement (yawn.react/get-react) "span" nil (yawn.infer/maybe-interpret yawn.convert/defaults a))
+         :=> '(yawn.react/createElement "span" nil (yawn.infer/maybe-interpret yawn.convert/defaults a))
 
          (compile '[:span (a-fn)])
-         :=> '(.createElement (yawn.react/get-react) "span" nil (yawn.infer/maybe-interpret yawn.convert/defaults (a-fn))))
+         :=> '(yawn.react/createElement "span" nil (yawn.infer/maybe-interpret yawn.convert/defaults (a-fn))))
 
      (-- "...unless we tag it with :props metadata"
          (compile '[:span ^:props a])
-         :=> '(.createElement (yawn.react/get-react) "span" (yawn.convert/interpret-props yawn.convert/defaults a)))
+         :=> '(yawn.react/createElement "span" (yawn.convert/interpret-props yawn.convert/defaults a)))
 
      (-- "keys are camelCase'd"
          (compile-props {:on-click ()})
@@ -170,7 +171,7 @@
 
      (-- "class vector may include dynamic elements"
          (compile-props '{:class ["b" c]})
-         :=> '{"className" (clojure.string/join " " ["b" c])})
+         :=> '{"className" (clojure.core/str "b" " " c)})
 
      (-- "class may be dynamic - with runtime interpretation"
          (compile-props '{:class x})
@@ -178,35 +179,35 @@
 
      (-- "classes from tag + props are joined"
          (compile [:h1.b.c {:class "a"}])
-         :=> '(.createElement (yawn.react/get-react) "h1" (js* "{'className':~{}}" "b c a")))
+         :=> '(yawn.react/createElement "h1" (js-obj "className" "b c a")))
 
      (-- "joining classes from tag + dynamic class forms"
          (compile '[:div.c1 {:class x}])
-         :=> '(.createElement (yawn.react/get-react)
-                              "div"
-                              (js* "{'className':~{}}" (clojure.core/str "c1 " (yawn.compiler/maybe-interpret-class x))))
+         :=> '(yawn.react/createElement
+               "div"
+               (js-obj "className" (clojure.core/str "c1 " (yawn.compiler/maybe-interpret-class yawn.convert/defaults x))))
          (compile '[:div.c1 {:class ["y" d]}])
-         :=> '(.createElement (yawn.react/get-react)
-                              "div"
-                              (js* "{'className':~{}}" (clojure.core/str "c1 " (clojure.string/join " " ["y" d])))))
+         :=> '(yawn.react/createElement
+               "div"
+               (js-obj "className" (clojure.core/str "c1 " (clojure.core/str "y" " " d)))))
 
      (-- "style map is also converted to camel-case"
          (compile-props '{:style {:font-weight 600}})
          :=> {"style" {"fontWeight" 600}}
          (compile-props '{:style x})
-         :=> '{"style" (yawn.convert/camel-case-keys->map x)})
+         :=> '{"style" (yawn.shared/camel-case-keys->obj x)})
 
      (-- "multiple style maps may be passed (for RN)"
          (compile-props '{:style [{:font-size 10} x]})
-         :=> '{"style" [{"fontSize" 10} (yawn.convert/camel-case-keys->map x)]})
+         :=> '{"style" [{"fontSize" 10} (yawn.shared/camel-case-keys->obj x)]})
 
      (-- "special cases of key renaming"
-         (->> (compile [:div {:for 1                        ;; special case
-                              :class 1                      ;; special case
-                              :kw-key 1                     ;; camelCase
-                              :aria-key 1                   ;; not camelCase (aria-*)
-                              :data-key 1                   ;; not camelCase (data-*)
-                              "string-key" 1                ;; not camelCase (string)
+         (->> (compile [:div {:for 1 ;; special case
+                              :class 1 ;; special case
+                              :kw-key 1 ;; camelCase
+                              :aria-key 1 ;; not camelCase (aria-*)
+                              :data-key 1 ;; not camelCase (data-*)
+                              "string-key" 1 ;; not camelCase (string)
                               }])
               last
               (filter string?)
@@ -220,7 +221,7 @@
 
      (-- "a keyword tag is assumed to map to a DOM element and is compiled to createElement"
          (compile [:div])
-         :=> '(.createElement (yawn.react/get-react) "div" nil))
+         :=> '(yawn.react/createElement "div" nil))
 
      (-- "a symbol tag is assumed to be a regular function that returns a React element.
        this is compiled to a regular function call - with no special handling of \"props\""
@@ -236,7 +237,7 @@
      ;; add a ^js hint or use `:>` as the tag
      (-- "invoke a symbol with createElement using ^js metadata"
          (compile '[^js my-fn])
-         :=> '(.createElement (yawn.react/get-react) my-fn nil))
+         :=> '(yawn.react/createElement my-fn nil))
 
 
      ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -244,7 +245,7 @@
 
      (-- "invoke a symbol with createElement using :> tag"
          (compile '[:> my-fn])
-         :=> '(.createElement (yawn.react/get-react) my-fn nil))
+         :=> '(yawn.react/createElement my-fn nil))
 
      ;; behind the scenes, `infer/inline?` determines whether a form is already
      ;; a valid React element (in which case, we skip runtime interpretation).
@@ -265,17 +266,17 @@
      (-- "various ways to control interpretation/inlining of children"
 
          (compile '[:div
-                    a                                       ;; maybe-interpret (not as props)
-                    ^:interpret b                           ;; interpret-form
-                    ^:inline c                              ;; inline
+                    a ;; maybe-interpret (not as props)
+                    ^:interpret b ;; interpret-form
+                    ^:inline c ;; inline
                     ^js d])
-         '(.createElement (yawn.react/get-react)
-                          "div"
-                          nil
-                          (yawn.infer/maybe-interpret yawn.convert/defaults a)
-                          (yawn.convert/as-element yawn.convert/defaults b)
-                          c
-                          d))
+         '(yawn.react/createElement
+           "div"
+           nil
+           (yawn.infer/maybe-interpret yawn.convert/defaults a)
+           (yawn.convert/as-element yawn.convert/defaults b)
+           c
+           d))
 
      (comment
       ;; using ^js allows us to rely on type propagation, eg. and define functions
@@ -286,32 +287,32 @@
       ;; and will not be wrapped with interpretation functions
       .. (my-fn))
 
-     (-- ":<> compiles to a react Fragment, children are compiled/interpreted"
-         (compile '[:<> [:div]])
-         '(.createElement (yawn.react/get-react)
-                          yawn.react/Fragment nil
-                          (.createElement (yawn.react/get-react) "div" nil)))
+     (-- ":... compiles to a react Fragment, children are compiled/interpreted"
+         (compile '[:... [:div]])
+         '(yawn.react/createElement
+           yawn.react/Fragment nil
+           (yawn.react/createElement "div" nil)))
 
 
      (-- "...with a react key"
-         (compile '^{:key "a"} [:<>])
-         '(.createElement (yawn.react/get-react) yawn.react/Fragment (js-obj "key" "a")))
+         (compile '^{:key "a"} [:...])
+         '(yawn.react/createElement yawn.react/Fragment (js-obj "key" "a")))
 
      (comment
       ;; key as metadata - only on element forms
       (compile ^{:key 1} [:span "x"])
-      (compile ^{:key 1} [:span {:foo "bar"} "x"])          ;; with props map
-      (compile ^{:key 1} [:span 'd "x"])                    ;; with symbol child (unrelated)
-      (compile (quote ^{:key 1} [:span ^:props d "x"]))     ;; with dynamic props
+      (compile ^{:key 1} [:span {:foo "bar"} "x"]) ;; with props map
+      (compile ^{:key 1} [:span 'd "x"]) ;; with symbol child (unrelated)
+      (compile (quote ^{:key 1} [:span ^:props d "x"])) ;; with dynamic props
       (compile '(for [x [1 2 3]]
-                  ^{:key (:y x)} [:span x]))                ;; dynamic key
+                  ^{:key (:y x)} [:span x])) ;; dynamic key
 
       ;; warning - key metadata is ignored because a-symbol is a function
       (compile '^{:key 1} [a-symbol]))
 
      (-- "compile inner forms"
          (compile '(do [:div]))
-         '(do (.createElement (yawn.react/get-react) "div" nil)))
+         '(do (yawn.react/createElement "div" nil)))
 
      (-- "ignore inner forms of unknown operators"
          (compile '(hello [:div]))
@@ -319,10 +320,10 @@
 
      (comment
       ;; interpret
-      (compile-or-interpret-child '(hello [:div]))          ;; maybe-interpret unknown operator
+      (compile-or-interpret-child '(hello [:div])) ;; maybe-interpret unknown operator
 
-      (compile-or-interpret-child '(let [a 1] [:div a]))    ;; compile inner form, maybe-interpret unknown symbol
-      (compile-or-interpret-child '(for [x xs] [:span x]))  ;; compile inner return values
+      (compile-or-interpret-child '(let [a 1] [:div a])) ;; compile inner form, maybe-interpret unknown symbol
+      (compile-or-interpret-child '(for [x xs] [:span x])) ;; compile inner return values
       (compile-or-interpret-child '(let [x (for [x [1 2 3]] x)] ;; only wrap-return at top level
                                      x))
 
@@ -332,7 +333,7 @@
       (compile '^{:key "k" :ref "r"}
                [:div#id.class ^:props b c])
 
-      (compile '[:div {:data-style (assoc {} :width 10)}])  ;; random props are not coerced to anything
+      (compile '[:div {:data-style (assoc {} :width 10)}]) ;; random props are not coerced to anything
       )))
 
 

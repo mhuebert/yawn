@@ -1,0 +1,3 @@
+{:deps {}
+ :tasks
+ {dev (shell "yarn shadow-cljs -A:test:demo watch demo test emit")}}

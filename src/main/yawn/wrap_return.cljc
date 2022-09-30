@@ -61,8 +61,8 @@
             "if-some")
           (let [[_ condition then else] form]
             `(~op ~condition
-               `(do ~@(butlast then) ~(f (last then)))
-               `(do ~@(butlast else) ~(f (last else)))))
+              ~(f then)
+              ~(f else)))
 
           "case"
           (let [[_ v & cases] form]

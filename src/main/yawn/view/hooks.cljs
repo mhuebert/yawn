@@ -1,4 +1,4 @@
-(ns yawn.view.react-hooks
+(ns yawn.view.hooks
   (:require ["react" :as react]))
 
 ;; defined inline to avoid runtime arity disambiguation

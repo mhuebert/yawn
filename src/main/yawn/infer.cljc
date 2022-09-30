@@ -48,4 +48,4 @@
             (throw (ex-info "Interpreting when not allowed"
                             {:error :throw-on-interpret
                              :form expr}))))
-          `(~'yawn.convert/<> ~options-sym ~expr)))))
+          `(~'yawn.convert/x ~options-sym ~expr)))))

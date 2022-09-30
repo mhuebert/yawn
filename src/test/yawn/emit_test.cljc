@@ -1,5 +1,6 @@
 (ns yawn.emit-test
-  (:require [yawn.compiler :as c])
+  (:require [yawn.compiler :as c]
+            [yawn.react])
   #?(:cljs (:require-macros [yawn.emit-test :refer [emit]])))
 
 (defmacro emit [label expr]
@@ -9,15 +10,17 @@
 
 #?(:cljs
    (do
-     (emit 1 (c/<> [:div]))
+     (emit 1 (c/x [:div]))
 
-     (emit 2 (c/<> [:div.a {:class "b"}]))
+     (emit 2 (c/x [:div.a {:class "b"}]))
 
      (let [B "b"
            D "d"]
-       (emit 3 (c/<> [:div.a {:class [B "c" D]}])))
+       (emit 3 (c/x [:div.a {:class [B "c" D]}])))
 
-     (emit 4 (c/<> [:div {:style {:font-size 12}}]))
+     (emit 4 (c/x [:div {:style {:font-size 12}}]))
+
+     (emit 5 (yawn.react/createElement "div"))
 
      ))
 

@@ -11,101 +11,112 @@
                             [yawn.compiler :as c]
                             yawn.view)))
 
-#?(:cljs
-   (do
-     (def ^boolean refresh-enabled?
-       (and goog/DEBUG (exists? js/ReactRefreshRuntime)))))
-
+(def ^boolean refresh-enabled? #?(:cljs (exists? js/ReactRefreshRuntime)))
 
 (env/def-options hiccup-opts {})
 
 (m/deftime
 
-  (defn parse-args [args & preds]
-    (loop [args args
-           preds preds
-           out []]
-      (if (and (seq args) (seq preds))
-        (let [p (first preds)]
-          (if (p (first args))
-            (recur (rest args)
-                   (rest preds)
-                   (conj out (first args)))
-            (recur args
-                   (rest preds)
-                   (conj out nil))))
-        (into out args))))
+ (defn parse-args [args & preds]
+   (loop [args args
+          preds preds
+          out []]
+     (if (and (seq args) (seq preds))
+       (let [p (first preds)]
+         (if (p (first args))
+           (recur (rest args)
+                  (rest preds)
+                  (conj out (first args)))
+           (recur args
+                  (rest preds)
+                  (conj out nil))))
+       (into out args))))
 
-  (defn- find-all [pred body]
-    (let [sym-list (atom [])]
-      (walk/postwalk
-        (fn w [x]
-          (if (pred x)
-            (do (swap! sym-list conj x)
-                x)
-            x))
-        body)
-      @sym-list))
+ (defn- find-all [pred body]
+   (let [sym-list (atom [])]
+     (walk/postwalk
+      (fn w [x]
+        (if (pred x)
+          (do (swap! sym-list conj x)
+              x)
+          x))
+      body)
+     @sym-list))
 
-  (defn- maybe-hook?
-    ;; detect forms that may be hooks based on syntax. this is
-    ;; for enabling hot-reload to know when to clear state.
-    [sym]
-    (let [sym-name (name sym)]
-      (or
-        (identical? "deref" sym-name)
-        (str/starts-with? sym-name "use")
-        (some->> (ana/resolve-symbol sym)
-                 (namespace)
-                 (str/includes? "hook")))))
+ (defn- maybe-hook?
+   ;; detect forms that may be hooks based on syntax. this is
+   ;; for enabling hot-reload to know when to clear state.
+   [sym]
+   (let [sym-name (name sym)]
+     (or
+      (identical? "deref" sym-name)
+      (str/starts-with? sym-name "use")
+      (some->> (ana/resolve-symbol sym)
+               (namespace)
+               (str/includes? "hook")))))
 
-  (defn- hook-signature [body]
-    ;; a string containing all symbols in body that begin with `use`
-    ;; followed by - or any capital letter, joins to a string.
-    (->> (find-all (every-pred symbol? maybe-hook?) body)
-         (str/join "|")))
+ (defn- hook-signature [body]
+   ;; a string containing all symbols in body that begin with `use`
+   ;; followed by - or any capital letter, joins to a string.
+   (->> (find-all (every-pred symbol? maybe-hook?) body)
+        (str/join "|")))
 
-  (defn simple-argv [argv]
-    (mapv #(cond (symbol? %) %
-                 (map? %) (:as % (gensym "map"))
-                 (vector? %) (gensym "vec")
-                 :else (gensym)) argv))
+ (defn simple-argv [argv]
+   (mapv #(cond (symbol? %) %
+                (map? %) (:as % (gensym "map"))
+                (vector? %) (gensym "vec")
+                :else (gensym)) argv))
 
-  (defmacro <> [form]
-    (c/compile hiccup-opts form))
+ (defmacro x [form]
+   (c/compile hiccup-opts form))
 
-  (defmacro defview [name & args]
-    (let [[docstring opts argv & body] (parse-args args string? map?)
-          qualified-name (str *ns* "/" name)
-          refresh-signature-sym (gensym (str name "-signature"))
-          constructor-sym (symbol (str name "-fn"))
-          key-fn (:key opts)
-          key-fn-sym (gensym (str name "-keyfn"))
-          name (vary-meta name assoc :tag 'js)
-          simple-args (simple-argv argv)]
-      `(let [~refresh-signature-sym (when ~'yawn.view/refresh-enabled?
-                                      (js/ReactRefreshRuntime.createSignatureFunctionForTransform))
-             ~constructor-sym (-> (j/fn ~constructor-sym    ;; name
-                                    [^:js {~(if (= 1 (count argv))
-                                              (vary-meta (first argv) assoc :clj true)
-                                              (with-meta argv {:js/shallow true})) :children :as p#}]
-                                    (when ~'yawn.view/refresh-enabled? (~refresh-signature-sym))
-                                    ~@(drop-last body)
-                                    (c/<> hiccup-opts ~(last body)))
-                                  (j/!set :displayName ~qualified-name))
-             ~@(when key-fn [key-fn-sym key-fn])]
-         (defn ~name
-           ~@(when docstring [docstring])
-           {:arglists (~argv)}
-           ~simple-args
-           (~@(:create-element-compile hiccup-opts)
-             ~constructor-sym
-             ~(when key-fn `(j/obj :key (~key-fn-sym ~(first argv))))
-             ~@simple-args))
-         (when ~'yawn.view/refresh-enabled?
-           ;; type, key, forceReset, getCustomHooks
-           (~refresh-signature-sym ~name ~(hook-signature body) nil nil)
-           (.register js/ReactRefreshRuntime ~name ~qualified-name)
-           (js/ReactRefreshRuntime.performReactRefresh))
-         #'~name))))
+ (defn qname [name] (str *ns* \/ name))
+
+ (defn refresh:sig [name] (symbol (str name "-sig")))
+ (defn sym:ctor [name] (symbol (str name "-ctor")))
+
+ (defn refresh:bindings [name]
+   `[~(refresh:sig name) (when ~'yawn.view/refresh-enabled?
+                           (js/ReactRefreshRuntime.createSignatureFunctionForTransform))])
+
+ (defn refresh:inner [name]
+   `(when ~'yawn.view/refresh-enabled? (~(refresh:sig name))))
+
+ (defn refresh:after [name body]
+   `(when ~'yawn.view/refresh-enabled?
+      (~(refresh:sig name) ~(sym:ctor name) ~(hook-signature body) nil nil)
+      (.register js/ReactRefreshRuntime ~(sym:ctor name) ~(qname name))
+      (.performReactRefresh js/ReactRefreshRuntime)))
+
+ (defmacro defview [name & args]
+   (let [[docstring opts argv & body] (parse-args args string? map?)
+         key-fn (:key opts)
+         name (vary-meta name assoc :tag `el)
+         simple-args (simple-argv argv)
+         props-sym (gensym "props")]
+     `(let [~@(refresh:bindings name)
+            ~(sym:ctor name) (doto (j/fn ~(sym:ctor name) [~props-sym]
+                                     (~@(if (seq argv)
+                                          `(j/let [~(cond-> argv
+                                                            (= 1 (count argv))
+                                                            first)
+                                                   (j/!get ~props-sym :children)])
+                                          `[do])
+                                      ~(refresh:inner name)
+                                      ~@(drop-last body)
+                                      (c/x hiccup-opts ~(last body))))
+                               (j/!set :displayName ~(qname name)))]
+
+        (defn ~name
+          ~@(when docstring [docstring])
+          {:arglists (~(with-meta argv {:tag 'yawn.view/el}))}
+          ~simple-args
+          (~@(:create-element-compile hiccup-opts)
+           ~(sym:ctor name)
+           ~(when key-fn `(j/obj :key (~key-fn ~(first argv))))
+           ~@simple-args))
+
+        ~(refresh:after name body)
+
+        #'~name))))
 

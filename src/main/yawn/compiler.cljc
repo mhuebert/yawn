@@ -149,7 +149,7 @@
     (case (compile-mode form)
       :inline form
       :interpret (do (shared/warn-on-interpret options form)
-                     `(~'yawn.convert/<> ~(pass-options options) ~form))
+                     `(~'yawn.convert/x ~(pass-options options) ~form))
       :compile (compile-vec options form)
       :maybe-interpret
       (or (wrap-return form (partial compile-or-interpret-child options) options)
@@ -162,7 +162,7 @@
   (or (wrap-return form compile-hiccup-child options)
       (case (compile-mode form)
         :compile (compile-vec options form)
-        :interpret `(~'yawn.convert/<> ~(pass-options options) ~form)
+        :interpret `(~'yawn.convert/x ~(pass-options options) ~form)
         form)))
 
 (defn compile-props
@@ -244,10 +244,9 @@
    {:pre [(map? options)]}
    (compile-or-interpret-child options content)))
 
-(defmacro <>
+(defmacro x
   ([options-sym content]
    {:pre [(symbol? options-sym)]}
    (compile (env/get-opts (ana/resolve-symbol options-sym)) content))
   ([content]
-   `(<> ~'yawn.convert/defaults ~content)))
-
+   `(x ~'yawn.convert/defaults ~content)))
