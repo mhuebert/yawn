@@ -8,7 +8,7 @@
   (:require
    [clojure.string :as str]
    [cljs.analyzer :as ana]
-   [yawn.wrap-return :refer [wrap-return wrap-return*]]
+   [yawn.wrap-return :refer [wrap-return]]
    [yawn.convert :as convert]
    [yawn.infer :as infer]
    [yawn.util :as util]
@@ -103,10 +103,6 @@
                                   :cljs (ana/resolve-symbol options-sym)) s)
       `(~'yawn.convert/class-string ~s))))
 
-(defmacro create-element [options-sym & args]
-  (concat (:create-element-compile (env/get-opts options-sym))
-          args))
-
 (declare emit literal->js)
 
 (defn literal->js
@@ -137,9 +133,10 @@
 
 (defn compile-vec
   "Returns an unevaluated form that returns a react element"
-  [options [tag :as form]]
-  (let [[tag props children form-opts] (analyze-vec options form)]
-    (emit options tag props children form-opts)))
+  [options form]
+  (->> form
+       (analyze-vec options)
+       (emit options)))
 
 (defn compile-or-interpret-child
   "Compiles hiccup forms & wraps ambiguous forms for runtime interpretation"
@@ -152,14 +149,14 @@
                      `(~'yawn.convert/x ~(pass-options options) ~form))
       :compile (compile-vec options form)
       :maybe-interpret
-      (or (wrap-return form (partial compile-or-interpret-child options) options)
+      (or (wrap-return form (partial compile-or-interpret-child options))
           `(infer/maybe-interpret ~(pass-options options) ~form)))))
 
 (defn compile-hiccup-child
   "Only compiles 'obvious' potential hiccup forms, ie. vectors... other args
    are untouched."
   [options form]
-  (or (wrap-return form compile-hiccup-child options)
+  (or (wrap-return form (partial compile-hiccup-child options))
       (case (compile-mode form)
         :compile (compile-vec options form)
         :interpret `(~'yawn.convert/x ~(pass-options options) ~form)
@@ -176,14 +173,14 @@
 
 (defn emit
   "Emits the final react js code"
-  [options tag props children {:as form-options
-                               :keys [create-element?
-                                      id
-                                      class-string
-                                      key
-                                      ref
-                                      prop-mode
-                                      form-meta]}]
+  [options [tag props children {:as form-options
+                                :keys [create-element?
+                                       id
+                                       class-string
+                                       key
+                                       ref
+                                       prop-mode
+                                       form-meta]}]]
   (let [runtime-static-props (fn [form]
                                ;; adds dynamic props to js-props object at runtime
                                (if-let [ops (-> (for [[k v] {"id" id "key" key "ref" ref}
@@ -195,7 +192,7 @@
                                  `(-> ~form ~@ops)
                                  form))]
     (if create-element?
-      `(~@(:create-element-compile options)
+      `(~'yawn.react/createElement
          ~tag
          ~(case prop-mode
             ;; literal, we can add static props at compile-time
@@ -224,7 +221,9 @@
             (runtime-static-props props))
          ~@(mapv (partial compile-or-interpret-child options) children))
       ;; clj-element
-      `(~'yawn.infer/maybe-interpret ~(pass-options options) ~(with-meta `(~tag ~@(mapv (partial compile-hiccup-child (pass-options options)) children)) form-meta)))))
+      `(~'yawn.infer/maybe-interpret ~(pass-options options) ~(with-meta `(~tag ~@(mapv
+                                                                                   (partial compile-hiccup-child (pass-options options))
+                                                                                   children)) form-meta)))))
 
 (defn compile
   "Arguments:

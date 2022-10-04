@@ -1,15 +1,15 @@
 (ns yawn.infer
   (:require [cljs.analyzer :as ana]
-            [yawn.env :as env]
-            [yawn.util :as util]
+            cljs.env
             #?(:clj cljs.analyzer.macros))
   #?(:cljs (:require-macros cljs.analyzer.macros)))
 
 (defn infer-type
   [form env]
-  (ana/infer-tag env
-                 (#?(:clj ana/no-warn :cljs cljs.analyzer.macros/no-warn)
-                   (ana/analyze env form))))
+  (binding [cljs.env/*compiler* (or cljs.env/*compiler* (atom {}))]
+    (ana/infer-tag env
+                   (#?(:clj ana/no-warn :cljs cljs.analyzer.macros/no-warn)
+                    (ana/analyze env form)))))
 
 ;; dev util
 (defmacro inferred-type [x]
@@ -48,4 +48,5 @@
             (throw (ex-info "Interpreting when not allowed"
                             {:error :throw-on-interpret
                              :form expr}))))
+          (prn 4)
           `(~'yawn.convert/x ~options-sym ~expr)))))

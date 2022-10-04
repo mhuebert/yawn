@@ -109,9 +109,9 @@
 
         (defn ~name
           ~@(when docstring [docstring])
-          {:arglists (~(with-meta argv {:tag 'yawn.view/el}))}
+          {:arglists (~(with-meta argv {:tag 'yawn.react/element}))}
           ~simple-args
-          (~@(:create-element-compile hiccup-opts)
+          (~'yawn.react/createElement
            ~(sym:ctor name)
            ~(when key-fn `(j/obj :key (~key-fn ~(first argv))))
            ~@simple-args))

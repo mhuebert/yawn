@@ -3,7 +3,7 @@
   (:require [applied-science.js-interop :as j]
             [clojure.test :as t :refer [deftest is are]]
             [yawn.convert :as convert]
-            [yawn.compiler :as compiler]
+            [yawn.compiler :as compiler :refer [compile]]
             [yawn.env :as env]
             [yawn.infer :as infer]
             [yawn.view :as v]
@@ -127,9 +127,6 @@
          ;; ^js, inline and as metadata on function
          ;; ^:interpret
          ))))
-
-(def compile compiler/compile)
-
 
 #?(:clj
    (deftest compile-tests
@@ -274,7 +271,7 @@
            "div"
            nil
            (yawn.infer/maybe-interpret yawn.convert/defaults a)
-           (yawn.convert/as-element yawn.convert/defaults b)
+           (yawn.convert/x yawn.convert/defaults b)
            c
            d))
 

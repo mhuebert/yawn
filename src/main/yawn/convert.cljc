@@ -1,12 +1,12 @@
 (ns yawn.convert
-  (:require #?@(:cljs [[applied-science.js-interop :as j]]
+  (:require #?@(:cljs [[applied-science.js-interop :as j]
+                       ["react" :as React]]
                 :clj  [[net.cgrand.macrovich :as m]])
             [clojure.string :as str]
             [yawn.env :as env]
             [yawn.util :as util]
             [yawn.react :as react]
-            [yawn.shared :as shared]
-            [clojure.pprint :refer [pprint]])
+            [yawn.shared :as shared])
   #?(:cljs (:require-macros yawn.convert
                             [net.cgrand.macrovich :as m])))
 
@@ -136,7 +136,7 @@
                  string
                  function
                  js
-                 yawn.view/el}
+                 yawn.react/element}
    :rewrite-for? true
 
    ;; relevant for the interpreter:
@@ -145,8 +145,6 @@
                      "..." yawn.react/Fragment
                      "Suspense" yawn.react/Suspense
                      ">" "yawn/create-element"}
-   :create-element yawn.react/createElement
-   :create-element-compile [yawn.react/createElement]
    :prop-handlers {"class"
                    (fn [options handlers m k v]
                      {:compile (assoc m "className" (yawn.shared/join-strings-compile options " " v))
@@ -182,7 +180,8 @@
       (let [result (-nth form i js/undefined)]
         (if (undefined? result)
           result
-          (if (or (object? result)
+          (if (or (and (object? result)
+                       (not (React/isValidElement result)))
                   (map? result))
             result
             js/undefined))))

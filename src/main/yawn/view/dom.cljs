@@ -14,9 +14,6 @@
 
 (defonce !roots (atom {}))
 
-#_(defn ^:dev/after-load render-roots []
-  #_(doseq [[_ [^js root form-fn]] @!roots] (.render root (form-fn))))
-
 (defn mount [el form-fn]
   (let [el (find-or-create-element el)
         ^js root (rdom/createRoot el)]

@@ -39,21 +39,17 @@
                                    x)) form))
         js-form `(~'applied-science.js-interop/lit ~(-> (dequote opts)
                                                         (stage :interpret)
-                                                        (update :skip-types quote-it)
-                                                        (dissoc :warn-on-interpretation?
-                                                                #_:skip-types
-                                                                :rewrite-for?
-                                                                :create-element-compile)))
+                                                        (dissoc :skip-types
+                                                                :warn-on-interpretation?
+                                                                :rewrite-for?)))
         qualified-name `(quote ~(qualified-sym name))
         clj-form (-> opts
                      (stage :compile)
                      (assoc :js-options-sym qualified-name)
                      (update :skip-types quote-it)
-                     (update :custom-elements quote-it)
-                     (update :create-element quote-it)
-                     (update :create-element-compile quote-it))]
+                     (update :custom-elements quote-it))]
 
     `(do
        (swap! !compile-opts assoc ~qualified-name ~clj-form)
        ~(macros/case :cljs `(def ~name ~js-form)
-                     :clj `(def ~name ~clj-form)))))
+                     :clj `(def ~name (@!compile-opts ~qualified-name))))))

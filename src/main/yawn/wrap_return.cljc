@@ -14,79 +14,69 @@
           first
           (guard symbol?)))
 
-(defmulti wrap-return*
-          "multimethod for extending `wrap-return`. "
-          (comp operator (fn [form f options] (operator form))))
-
-(defmethod wrap-return* :default
-  [form f options]
-  nil)
-
 (defn wrap-return
   "Wraps return clauses of common Clojure operators with `f`.
-   Returns nil if no match is found (to allow consumers to handle this case differently).
-   Csn be extended via the `wrap-return*` multimethod."
-  [form f options]
+   Returns nil if no match is found (to allow consumers to handle this case differently)."
+  [form f]
   (when-let [op (operator form)]
-    (or (wrap-return* form f options)
-        (case (name op)
-          "do"
-          `(do ~@(butlast (rest form)) ~(f (last form)))
+    (case (name op)
+      "do"
+      `(do ~@(butlast (rest form)) ~(f (last form)))
 
-          ("array"
-            "list")
-          `(cljs.core/array ~@(mapv f (rest form)))
+      ("array"
+       "list")
+      `(cljs.core/array ~@(mapv f (rest form)))
 
-          ("let"
-            "let*"
-            "letfn"
-            "letfn*")
-          (let [[_ bindings & body] form]
-            `(~op ~bindings ~@(butlast body) ~(f (last body))))
+      ("let"
+       "let*"
+       "letfn"
+       "letfn*")
+      (let [[_ bindings & body] form]
+        `(~op ~bindings ~@(butlast body) ~(f (last body))))
 
-          "for"
-          (let [[_ bindings body] form]
-            `(for ~bindings ~(f body)))
+      "for"
+      (let [[_ bindings body] form]
+        `(for ~bindings ~(f body)))
 
-          ("when"
-            "when-not"
-            "when-let"
-            "when-some")
-          (let [[_ condition & body] form]
-            `(~op ~condition ~@(butlast body) ~(f (last body))))
+      ("when"
+       "when-not"
+       "when-let"
+       "when-some")
+      (let [[_ condition & body] form]
+        `(~op ~condition ~@(butlast body) ~(f (last body))))
 
-          ("if"
-            "if-let"
-            "if-not"
-            "if-some")
-          (let [[_ condition then else] form]
-            `(~op ~condition
-              ~(f then)
-              ~(f else)))
+      ("if"
+       "if-let"
+       "if-not"
+       "if-some")
+      (let [[_ condition then else] form]
+        `(~op ~condition
+          ~(f then)
+          ~(f else)))
 
-          "case"
-          (let [[_ v & cases] form]
-            `(case ~v
-               ~@(doall (mapcat
-                          (fn [[test hiccup]]
-                            (if hiccup
-                              [test (f hiccup)]
-                              [(f test)]))
-                          (partition-all 2 cases)))))
+      "case"
+      (let [[_ v & cases] form]
+        `(case ~v
+           ~@(doall (mapcat
+                     (fn [[test hiccup]]
+                       (if hiccup
+                         [test (f hiccup)]
+                         [(f test)]))
+                     (partition-all 2 cases)))))
 
-          "condp"
-          (let [[_ f v & cases] form]
-            `(condp ~f ~v
-               ~@(doall (mapcat
-                          (fn [[test hiccup]]
-                            (if hiccup
-                              [test (f hiccup)]
-                              [(f test)]))
-                          (partition-all 2 cases)))))
+      "condp"
+      (let [[_ f v & cases] form]
+        `(condp ~f ~v
+           ~@(doall (mapcat
+                     (fn [[test hiccup]]
+                       (if hiccup
+                         [test (f hiccup)]
+                         [(f test)]))
+                     (partition-all 2 cases)))))
 
-          "cond"
-          (let [[_ & clauses] form]
-            `(cond ~@(mapcat
-                       (fn [[check expr]] [check (f expr)])
-                       (partition 2 clauses))))
-          nil))))
+      "cond"
+      (let [[_ & clauses] form]
+        `(cond ~@(mapcat
+                  (fn [[check expr]] [check (f expr)])
+                  (partition 2 clauses))))
+      nil)))
