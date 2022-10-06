@@ -1,5 +1,6 @@
 (ns yawn.view
-  (:require [clojure.string :as str]
+  (:require #?(:cljs ["react" :as react])
+            [clojure.string :as str]
             [clojure.walk :as walk]
             [cljs.analyzer :as ana]
             [applied-science.js-interop :as j]
@@ -10,6 +11,8 @@
   #?(:cljs (:require-macros [net.cgrand.macrovich :as m]
                             [yawn.compiler :as c]
                             yawn.view)))
+
+(declare el) ;; for type hints
 
 (def ^boolean refresh-enabled? #?(:cljs (exists? js/ReactRefreshRuntime)))
 
@@ -109,14 +112,55 @@
 
         (defn ~name
           ~@(when docstring [docstring])
-          {:arglists (~(with-meta argv {:tag 'yawn.react/element}))}
+          {:arglists (~(with-meta argv {:tag 'yawn.view/el}))}
           ~simple-args
           (~'yawn.react/createElement
            ~(sym:ctor name)
-           ~(when key-fn `(j/obj :key (~key-fn ~(first argv))))
+           ~(when key-fn `(j/obj :key (~key-fn ~(first simple-args))))
            ~@simple-args))
 
         ~(refresh:after name body)
 
         #'~name))))
 
+
+;; React API access
+#?(:cljs
+   (do
+     (defn- as-array [x] (cond-> x (not (array? x)) to-array))
+
+     (defn use-memo
+       ([f] (react/useMemo f #js[]))
+       ([f deps] (react/useMemo f (as-array deps))))
+
+     (defn use-callback [x] (react/useCallback x))
+
+     (defn- wrap-effect [f] #(or (f) js/undefined))
+
+     (defn use-effect
+       ([f] (react/useEffect (wrap-effect f) #js[]))
+       ([f deps] (react/useEffect (wrap-effect f) (as-array deps))))
+
+     (defn use-state [init] (react/useState init))
+
+     (defn specify-atom! [obj]
+       (specify! obj
+         IDeref
+         (-deref [^js this] (.-current this))
+         IReset
+         (-reset! [^js this new-value] (set! (.-current this) new-value))
+         ISwap
+         (-swap!
+           ([o f] (reset! o (f o)))
+           ([o f a] (reset! o (f o a)))
+           ([o f a b] (reset! o (f o a b)))
+           ([o f a b xs] (reset! o (apply f o a b xs))))))
+
+     (defn use-ref
+       ([] (use-ref nil))
+       ([init] (specify-atom! (react/useRef init))))
+
+     (defn create-ref [] (specify-atom! (react/createRef)))
+
+     (defn use-sync-external-store [subscribe get-snapshot]
+       (react/useSyncExternalStore subscribe get-snapshot))))

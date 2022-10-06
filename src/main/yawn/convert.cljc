@@ -136,7 +136,7 @@
                  string
                  function
                  js
-                 yawn.react/element}
+                 yawn.view/el}
    :rewrite-for? true
 
    ;; relevant for the interpreter:
