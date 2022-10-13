@@ -15,18 +15,19 @@
 (defmacro inferred-type [x]
   (list 'quote (infer-type x &env)))
 
-(defn skip?
+(defn skipped
   "Returns true if we can skip interpretation"
-  ([options form] (skip? options form nil (:skip-types options)))
-  ([options form tag] (skip? options form tag (:skip-types options)))
+  ([options form] (skipped options form nil (:skip-types options)))
+  ([options form tag] (skipped options form tag (:skip-types options)))
   ([options form tag skip-types]
-   (or (string? form)
-       (number? form)
-       (nil? form)
-       (let [expr-meta (meta form)
-             tag (or (:tag expr-meta) tag)]
-         (boolean (or (contains? skip-types tag)
-                      (:inline expr-meta)))))))
+   (cond (string? form) form
+         (number? form) form
+         (nil? form) form
+         :else (let [expr-meta (meta form)
+                     tag (or (:tag expr-meta) tag)]
+                 (when (or (contains? skip-types tag)
+                           (:inline expr-meta))
+                   (vary-meta form assoc :tag 'yawn.view/el))))))
 
 (defmacro maybe-interpret
   "Macro that wraps `expr` with interpreter call, if it cannot be skipped based on inferred type."
@@ -35,18 +36,16 @@
                 warn-on-interpretation?
                 throw-on-interpretation?] :as options} @(resolve options-sym)
         tag (infer-type expr &env)]
-    (if (skip? options expr tag skip-types)
-      expr
-      (do (when-not (:interpret (meta expr))
-          (when warn-on-interpretation?
-            (println (str "WARNING: interpreting form " (pr-str expr)
-                          (let [{:keys [line file]} (meta expr)]
-                            (when (and line file)
-                              (str ", " file ":" line)))
-                          (some->> tag (str ", ")))))
-          (when throw-on-interpretation?
-            (throw (ex-info "Interpreting when not allowed"
-                            {:error :throw-on-interpret
-                             :form expr}))))
-          (prn 4)
-          `(~'yawn.convert/x ~options-sym ~expr)))))
+    (or (skipped options expr tag skip-types)
+        (do (when-not (:interpret (meta expr))
+              (when warn-on-interpretation?
+                (println (str "WARNING: interpreting form " (pr-str expr) ","
+                              "tag: " (or tag "not-found") ", "
+                              (let [{:keys [line file]} (meta expr)]
+                                (when (and line file)
+                                  (str ", " file ":" line))))))
+              (when throw-on-interpretation?
+                (throw (ex-info "Interpreting when not allowed"
+                                {:error :throw-on-interpret
+                                 :form expr}))))
+            `(~'yawn.convert/x ~options-sym ~expr)))))

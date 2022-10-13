@@ -1,5 +1,6 @@
 (ns yawn.view
-  (:require #?(:cljs ["react" :as react])
+  (:require #?@(:cljs [["react" :as react]
+                       ["use-sync-external-store/shim" :refer [useSyncExternalStore]]])
             [clojure.string :as str]
             [clojure.walk :as walk]
             [cljs.analyzer :as ana]
@@ -116,7 +117,7 @@
           ~simple-args
           (~'yawn.react/createElement
            ~(sym:ctor name)
-           ~(when key-fn `(j/obj :key (~key-fn ~(first simple-args))))
+           ~(when key-fn `(j/obj :key (~key-fn ~@simple-args)))
            ~@simple-args))
 
         ~(refresh:after name body)
@@ -133,7 +134,9 @@
        ([f] (react/useMemo f #js[]))
        ([f deps] (react/useMemo f (as-array deps))))
 
-     (defn use-callback [x] (react/useCallback x))
+     (defn use-callback
+       ([x] (use-callback x #js[]))
+       ([x deps] (react/useCallback x (to-array deps))))
 
      (defn- wrap-effect [f] #(or (f) js/undefined))
 
@@ -163,4 +166,4 @@
      (defn create-ref [] (specify-atom! (react/createRef)))
 
      (defn use-sync-external-store [subscribe get-snapshot]
-       (react/useSyncExternalStore subscribe get-snapshot))))
+       (useSyncExternalStore subscribe get-snapshot))))
