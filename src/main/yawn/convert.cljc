@@ -252,6 +252,7 @@
         form))
 
     (defn x
+      "Convert form to a React element"
       ([form]
        (x defaults form))
       ([options form]

@@ -15,7 +15,8 @@
    [yawn.convert :as convert]
    [yawn.env :as env]
    [yawn.shared :as shared]
-   yawn.react))
+   yawn.react)
+  #?(:cljs (:require-macros yawn.compiler)))
 
 (defn pass-options [opts]
   {:pre [(some? opts)]
