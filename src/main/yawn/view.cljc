@@ -93,10 +93,7 @@
     `(let [~@(refresh:bindings name)
            ~(sym:ctor name) (doto (j/fn ~(sym:ctor name) [~props-sym]
                                     (~@(if (seq argv)
-                                         `(j/let [~(cond-> argv
-                                                           (= 1 (count argv))
-                                                           first)
-                                                  (j/get ~props-sym "children")])
+                                         `(j/let [~argv (j/get ~props-sym :cljs-args)])
                                          `[do])
                                      ~(refresh:inner name)
                                      ~@(drop-last body)
@@ -109,11 +106,9 @@
          ~simple-args
          (~'yawn.react/createElement
           ~(sym:ctor name)
-          ~(when key-fn `(j/obj :key (~key-fn ~@simple-args)))
-          ~@simple-args))
-
+          (j/obj ~@(when key-fn [:key `(~key-fn ~@simple-args)])
+                 :cljs-args [~@simple-args])))
        ~(refresh:after name body)
-
        #'~name)))
 
 (defmacro defview [name & args]
@@ -142,7 +137,7 @@
        IDeref
        (-deref [^js this] (aget st 0))
        IReset
-       (-reset! [^js this new-value] ((aget st 1) new-value))
+       (-reset! [^js this new-value] ((aget st 1) (constantly new-value)))
        ISwap
        (-swap! [this f] ((aget st 1) f))
        (-swap! [this f a] ((aget st 1) #(f % a)))
@@ -161,12 +156,14 @@
        ([x] (use-callback x #js[]))
        ([x deps] (react/useCallback x (to-array deps))))
 
-     (defn- wrap-effect [f] #(or (f) js/undefined))
+     (defn- wrap-effect
+       ;; utility for wrapping function to return `js/undefined` for non-functions
+       [f] #(let [v (f)] (if (fn? v) v js/undefined)))
 
      (defn use-effect
        "React hook: useEffect. Defaults to an empty `deps` array.
-        Wraps `f` to return js/undefined for any falsy value."
-       ([f] (react/useEffect (wrap-effect f) #js[]))
+        Wraps `f` to return js/undefined for any non-function value."
+       ([f] (use-effect (wrap-effect f) #js[]))
        ([f deps] (react/useEffect (wrap-effect f) (as-array deps))))
 
      (defn use-state
