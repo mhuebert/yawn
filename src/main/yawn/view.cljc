@@ -102,7 +102,7 @@
 
        (defn ~name
          ~@(when docstring [docstring])
-         {:arglists (~(with-meta argv {:tag 'yawn.view/el}))}
+         {:arglists '(~(with-meta argv {:tag 'yawn.view/el}))}
          ~simple-args
          (~'yawn.react/createElement
           ~(sym:ctor name)
