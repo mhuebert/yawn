@@ -71,13 +71,16 @@
    :sig (symbol (str name "-sig"))
    :constructor (symbol (str name "-constructor"))})
 
+
 (defn refresh:create-sig []
-  (js/ReactRefreshRuntime.createSignatureFunctionForTransform))
+  #?(:cljs (js/ReactRefreshRuntime.createSignatureFunctionForTransform)))
 
 (defn refresh:after [sig constructor hook-sig fqn]
-  (sig constructor hook-sig nil nil)
-  (.register js/ReactRefreshRuntime constructor fqn)
-  (.performReactRefresh js/ReactRefreshRuntime))
+  #?(:cljs
+     (do
+       (sig constructor hook-sig nil nil)
+       (.register js/ReactRefreshRuntime constructor fqn)
+       (.performReactRefresh js/ReactRefreshRuntime))))
 
 (defn defview:impl [name args]
   (let [[docstring opts argv & body] (parse-args args string? map?)
