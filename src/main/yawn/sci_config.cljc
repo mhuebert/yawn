@@ -1,9 +1,10 @@
 (ns yawn.sci-config
-  (:require applied-science.js-interop
-            yawn.react
-            [yawn.view :as v]
+  (:require [applied-science.js-interop]
+            [sci.core :as sci]
             [yawn.convert :as convert]
-            [sci.core :as sci]))
+            [yawn.hooks]
+            [yawn.react]
+            [yawn.view :as v]))
 
 (defn ^:macro defview
   "Defines view function."
@@ -20,7 +21,10 @@
                         use-state
                         use-ref
                         use-sync-external-store
+
                         refresh-enabled?
+                        refresh:create-sig
+                        refresh:after
                         el])
          {'defview (sci/copy-var defview vns)
           'x (sci/copy-var convert/x vns)}))
@@ -29,4 +33,5 @@
 (def react-namespace (sci/copy-ns yawn.react rns))
 
 (def namespaces {'yawn.view view-namespace
-                 'yawn.react react-namespace})
+                 'yawn.react react-namespace
+                 'yawn.hooks (sci/copy-ns yawn.hooks (sci/create-ns 'yawn.hooks nil))})
