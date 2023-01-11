@@ -115,3 +115,13 @@
                          (force-update!))
                        next-state)))]
     (WrappedState. #js[@!state update-fn])))
+
+(defn use-watch-value [x]
+  (let [id (use-callback #js{})]
+    (use-sync-external-store
+     (react/useCallback
+      (fn [changed!]
+        (add-watch x id (fn [_ _ _ _] (changed!)))
+        #(remove-watch x id))
+      #js[x])
+     #(deref x))))

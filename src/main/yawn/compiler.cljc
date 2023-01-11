@@ -223,7 +223,7 @@
          ~@(mapv (partial compile-or-interpret-child options) children))
       ;; clj-element
       `(~'yawn.infer/maybe-interpret ~(pass-options options) ~(with-meta `(~tag ~@(mapv
-                                                                                   (partial compile-hiccup-child (pass-options options))
+                                                                                   (partial compile-hiccup-child options)
                                                                                    children)) form-meta)))))
 
 (defn compile
