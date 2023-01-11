@@ -116,7 +116,7 @@
                        next-state)))]
     (WrappedState. #js[@!state update-fn])))
 
-(defn use-watch-value [x]
+(defn use-atom [x]
   (let [id (use-callback #js{})]
     (use-sync-external-store
      (react/useCallback
