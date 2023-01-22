@@ -3,7 +3,7 @@
             ["use-sync-external-store/shim" :refer [useSyncExternalStore]]))
 
 ;; a type for wrapping react/useState to support reset! and swap!
-(deftype WrappedState [st]
+(deftype AtomLike [st]
   IIndexed
   (-nth [coll i] (aget st i))
   (-nth [coll i nf] (or (aget st i) nf))
@@ -45,7 +45,7 @@
 (defn use-state
   "React hook: useState. Can be used like react/useState but also behaves like an atom."
   [init]
-  (WrappedState. (react/useState init)))
+  (AtomLike. (react/useState init)))
 
 (deftype Ref [current]
   IDeref
@@ -114,7 +114,7 @@
                          (reset! !state next-state)
                          (force-update!))
                        next-state)))]
-    (WrappedState. #js[@!state update-fn])))
+    (AtomLike. #js[@!state update-fn])))
 
 (defn use-atom [x]
   (let [id (use-callback #js{})]
