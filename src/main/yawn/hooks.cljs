@@ -116,7 +116,7 @@
                        next-state)))]
     (AtomLike. #js[@!state update-fn])))
 
-(defn use-atom [x]
+(defn use-deref [x]
   (let [id (use-callback #js{})]
     (use-sync-external-store
      (react/useCallback
@@ -125,3 +125,5 @@
         #(remove-watch x id))
       #js[x])
      #(deref x))))
+
+(defn ^:deprecated use-atom [x] (use-deref x))
