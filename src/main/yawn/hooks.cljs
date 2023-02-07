@@ -1,6 +1,7 @@
 (ns yawn.hooks
   (:require ["react" :as react]
-            ["use-sync-external-store/shim" :refer [useSyncExternalStore]]))
+            ["use-sync-external-store/shim" :refer [useSyncExternalStore]]
+            [applied-science.js-interop :as j]))
 
 ;; a type for wrapping react/useState to support reset! and swap!
 (deftype AtomLike [st]
@@ -70,16 +71,29 @@
 (defn use-sync-external-store [subscribe get-snapshot]
   (useSyncExternalStore subscribe get-snapshot))
 
+(comment
+ (defn use-deps
+   "Wraps a value to pass as React `deps`, using a custom equal? check (default: clojure.core/=)"
+   ([deps] (use-deps deps =))
+   ([deps equal?]
+    (let [!counter (use-ref 0)
+          !prev-deps (use-ref deps)
+          changed? (not (equal? deps @!prev-deps))]
+      (reset! !prev-deps deps)
+      (when changed? (swap! !counter inc))
+      #js[@!counter]))))
+
+
 (defn use-deps
   "Wraps a value to pass as React `deps`, using a custom equal? check (default: clojure.core/=)"
   ([deps] (use-deps deps =))
   ([deps equal?]
-   (let [!counter (use-ref 0)
-         !prev-deps (use-ref deps)
-         changed? (not (equal? deps @!prev-deps))]
-     (reset! !prev-deps deps)
-     (when changed? (swap! !counter inc))
-     #js[@!counter])))
+   (let [counter (react/useRef 0)
+         prev-deps (react/useRef deps)
+         changed? (not (equal? deps (j/get prev-deps :current)))]
+     (j/assoc! prev-deps :current deps)
+     (when changed? (j/update! counter :current inc))
+     (array (j/get counter :current)))))
 
 (defn- invoke-fn
   "Invoke (f x) if f is a function, otherwise return f"
