@@ -82,7 +82,7 @@
        (.register js/ReactRefreshRuntime constructor fqn)
        (.performReactRefresh js/ReactRefreshRuntime))))
 
-(defn defview:impl [name args]
+(defn defview:impl [wrap-expr name args]
   (let [[docstring opts argv & body] (parse-args args string? map?)
         key-fn (:key opts)
         name (vary-meta name assoc :tag 'yawn.view/el)
@@ -96,8 +96,8 @@
                                               `(j/let [~argv (j/get ~props-sym :cljs-args)])
                                               `[do])
                                           (when refresh?# (~(:sig names)))
-                                          ~@(drop-last body)
-                                          (~'yawn.view/x ~(last body))))
+                                          ~(wrap-expr `(do ~@(drop-last body)
+                                                           (~'yawn.view/x ~(last body))))))
                                    (j/assoc! :displayName ~(:display names)))]
 
        (defn ~name
@@ -117,4 +117,4 @@
 
 
 (defmacro defview [name & args]
-  (defview:impl name args))
+  (defview:impl identity name args))

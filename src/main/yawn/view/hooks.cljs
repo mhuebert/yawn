@@ -5,8 +5,11 @@
 (defn use-state [initial-state]
   (react/useState initial-state))
 
-(defn use-effect [did-update]
-  (react/useEffect did-update))
+(defn use-effect
+  ([f]
+   (react/useEffect f))
+  ([f deps]
+   (react/useEffect f deps)))
 
 (defn use-layout-effect [did-update]
   (react/useLayoutEffect did-update))
