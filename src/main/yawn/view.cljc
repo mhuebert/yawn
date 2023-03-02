@@ -82,39 +82,44 @@
        (.register js/ReactRefreshRuntime constructor fqn)
        (.performReactRefresh js/ReactRefreshRuntime))))
 
-(defn defview:impl [wrap-expr name args]
-  (let [[docstring opts argv & body] (parse-args args string? map?)
-        key-fn (:key opts)
-        name (vary-meta name assoc :tag 'yawn.view/el)
-        simple-args (simple-argv argv)
-        props-sym (gensym "props")
-        names (names name)]
-    `(let [refresh?# ~'yawn.view/refresh-enabled?
-           ~(:sig names) (when refresh?# (refresh:create-sig))
-           ~(:constructor names) (doto (j/fn ~(:constructor names) [~props-sym]
-                                         (~@(if (seq argv)
-                                              `(j/let [~argv (j/get ~props-sym :cljs-args)])
-                                              `[do])
-                                          (when refresh?# (~(:sig names)))
-                                          ~(wrap-expr `(do ~@(drop-last body)
-                                                           (~'yawn.view/x ~(last body))))))
-                                   (j/assoc! :displayName ~(:display names)))]
+(defn defview:impl
+  ([name args] (defview:impl nil name args))
+  ([{:as options
+     :keys [wrap-expr]
+     :or {wrap-expr identity}}
+    name args]
+   (let [[docstring opts argv & body] (parse-args args string? map?)
+         key-fn (:key opts)
+         name (vary-meta name assoc :tag 'yawn.view/el)
+         simple-args (simple-argv argv)
+         props-sym (gensym "props")
+         names (names name)]
+     `(let [refresh?# ~'yawn.view/refresh-enabled?
+            ~(:sig names) (when refresh?# (refresh:create-sig))
+            ~(:constructor names) (doto (j/fn ~(:constructor names) [~props-sym]
+                                          (~@(if (seq argv)
+                                               `(j/let [~argv (j/get ~props-sym :cljs-args)])
+                                               `[do])
+                                           (when refresh?# (~(:sig names)))
+                                           ~(wrap-expr `(do ~@(drop-last body)
+                                                            (~'yawn.view/x ~(last body))))))
+                                    (j/assoc! :displayName ~(:display names)))]
 
-       (defn ~name
-         ~@(when docstring [docstring])
-         {:arglists '(~(with-meta argv {:tag 'yawn.view/el}))}
-         ~simple-args
-         (~'yawn.react/createElement
-          ~(:constructor names)
-          (j/obj ~@(when key-fn [:key `(~key-fn ~@simple-args)])
-                 :cljs-args [~@simple-args])))
-       (when refresh?#
-         (refresh:after ~(:sig names)
-                        ~(:constructor names)
-                        ~(hook-signature body)
-                        ~(:display names)))
-       #'~name)))
+        (defn ~name
+          ~@(when docstring [docstring])
+          {:arglists '(~(with-meta argv {:tag 'yawn.view/el}))}
+          ~simple-args
+          (~'yawn.react/createElement
+           ~(:constructor names)
+           (j/obj ~@(when key-fn [:key `(~key-fn ~@simple-args)])
+                  :cljs-args [~@simple-args])))
+        (when refresh?#
+          (refresh:after ~(:sig names)
+                         ~(:constructor names)
+                         ~(hook-signature body)
+                         ~(:display names)))
+        #'~name))))
 
 
 (defmacro defview [name & args]
-  (defview:impl identity name args))
+  (defview:impl name args))
