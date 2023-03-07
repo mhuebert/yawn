@@ -131,7 +131,7 @@
 
 (env/set-defaults!
  '{;; settings for the compiler:
-   :warn-on-interpretation? true
+   :warn-on-interpretation? false
    :skip-types #{number
                  string
                  function
