@@ -17,6 +17,7 @@
     "<>" (clj' yawn.react/Fragment)
     "..." (clj' yawn.react/Fragment)
     ">" "createElement"
+    "el" "createElement"
     "Fragment" (clj' yawn.react/Fragment)
     "Suspense" (clj' yawn.react/Suspense)
     "Portal" (clj' yawn.react/Portal)
@@ -67,7 +68,7 @@
     class-str))
 
 #?(:cljs
-   (defn update-class->obj [obj class-str]
+   (defn update-className [obj class-str]
      (j/update! obj :className update-class* class-str)))
 
 (defn join-strings [sep v]
@@ -105,18 +106,20 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; parse props (top-level)
 
-(defn interpret-props [props]
-  #?(:cljs (if
-            (object? props)
-             props
-             (reduce-kv
-              (fn [m k v] (add-prop m k v))
-              #js{}
-              props))
-     :clj  (reduce-kv
-            (fn [m k v] (add-prop m k v))
-            {}
-            props)))
+(defn interpret-props
+  ([props] (interpret-props #?(:cljs #js{} :clj {}) props))
+  ([init props]
+   #?(:cljs (if
+             (object? props)
+              props
+              (reduce-kv
+               (fn [m k v] (add-prop m k v))
+               init
+               props))
+      :clj  (reduce-kv
+             (fn [m k v] (add-prop m k v))
+             init
+             props))))
 
 (declare x)
 
@@ -141,7 +144,7 @@
 
     (j/defn add-static-props [props-obj ^:js [tag-name id class-string]]
       (cond-> props-obj
-              (defined? class-string) (update-class->obj class-string)
+              (defined? class-string) (update-className class-string)
               (defined? id) (applied-science.js-interop/!set :id id)))
 
     (defn make-element

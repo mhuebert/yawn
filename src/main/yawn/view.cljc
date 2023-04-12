@@ -1,4 +1,5 @@
 (ns yawn.view
+  (:refer-clojure :exclude [partial])
   (:require #?@(:cljs [["react" :as react]
                        ["react-dom" :refer [createPortal]]
                        ["use-sync-external-store/shim" :refer [useSyncExternalStore]]])
@@ -16,6 +17,12 @@
 
 (defmacro x [form] (compiler/compile form))
 (defmacro <> [form] (compiler/compile form))
+
+(defmacro from-element
+  "Creates a view function from an element like :div#id.class or package/ElementName.
+   If props are supplies, they will be merged with props supplied at callsite."
+  ([kw] (compiler/compile-element kw))
+  ([kw props] (compiler/compile-element kw props)))
 
 (defn parse-args [args & preds]
   (loop [args args

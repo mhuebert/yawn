@@ -6,6 +6,7 @@
   weavejester/hiccup -> r0man/sablono -> Hicada."
   (:refer-clojure :exclude [compile])
   (:require
+   [applied-science.js-interop :as j]
    [clojure.string :as str]
    [cljs.analyzer :as ana]
    [yawn.wrap-return :refer [wrap-return]]
@@ -52,7 +53,8 @@
                             is-element?
                             (string? tag)
                             (keyword? tag)
-                            (= 'js (:tag (meta tag))))]
+                            ('js (:tag (meta tag)))
+                            (:el (meta tag)))]
     (if create-element?
       (let [[tag body] (if is-element? [(first body) (rest body)]
                                        [(or tag-override tag) body])
@@ -159,6 +161,34 @@
    {}
    props))
 
+
+(defn compile-element
+  ([el] (compile-element el nil))
+  ([el initial-props]
+   (let [[el id class-string] (if (or (keyword? el)
+                                      (string? el))
+                                (convert/parse-tag (name el))
+                                [el nil nil])
+         initial-props (some-> initial-props compile-props)
+         initial-className (some->> [class-string (get initial-props "className")]
+                               (keep identity)
+                               seq
+                               (str/join " "))
+         initial-style (some-> (get initial-props "style") literal->js)
+         initial-props (-> initial-props (dissoc "className" "style") literal->js)]
+     (tap> [:ip initial-props :s initial-style :c initial-className])
+     `(let [update-props# (fn [props#]
+                            (-> props#
+                                ~@(when id [`(j/!set :id ~id)])
+                                ~@(when initial-className [`(~'yawn.convert/update-className ~initial-className)])
+                                ~@(when initial-props [`(j/extend! ~initial-props)])
+                                ~@(when initial-style [`(j/update! :style j/extend! ~initial-style)])))]
+        (fn [props# & children#]
+          (let [[props# children#] (if (map? props#)
+                                     [(convert/interpret-props props#) children#]
+                                     [(cljs.core/js-obj) (cons props# children#)])]
+            (~'yawn.convert/make-element ~el (update-props# props#) children# 0)))))))
+
 (defn emit
   "Emits the final react js code"
   [[tag props children {:as form-options
@@ -175,7 +205,7 @@
                                                       :when v]
                                                   `(~'applied-science.js-interop/!set ~k ~v))
                                                 (cond-> class-string
-                                                        (conj `(~'yawn.convert/update-class->obj ~class-string)))
+                                                        (conj `(~'yawn.convert/update-className ~class-string)))
                                                 seq)]
                                  `(-> ~form ~@ops)
                                  form))]
