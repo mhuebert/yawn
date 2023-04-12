@@ -71,6 +71,16 @@
 (defmacro when-defined [binding then]
   `(if-defined ~binding ~then nil))
 
+#?(:cljs
+   (defn find-or-create-element [id]
+     (if (or (string? id) (keyword? id))
+       (or
+        (js/document.getElementById (name id))
+        (-> (js/document.createElement "div")
+            (j/!set :id (name id))
+            (doto (->> js/document.body.append))))
+       id)))
+
 (comment
 
   (defn a-fn []

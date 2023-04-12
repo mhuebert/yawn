@@ -1,19 +1,12 @@
 (ns yawn.root
-  (:require ["react-dom/client" :as react:dom]
-            [applied-science.js-interop :as j]))
-
-(defn find-or-create-element [id]
-  (if (or (string? id) (keyword? id))
-    (or
-     (js/document.getElementById (name id))
-     (-> (js/document.createElement "div")
-         (j/!set :id (name id))
-         (doto (->> js/document.body.append))))
-    id))
+  (:require ["react-dom" :refer [createPortal]]
+            ["react-dom/client" :refer [createRoot]]
+            [yawn.view :as v]
+            [yawn.util :as u]))
 
 (defn render [^js root react-el] (.render root react-el))
 (defn create
-  ([el] (react:dom/createRoot (find-or-create-element el)))
+  ([el] (createRoot (u/find-or-create-element el)))
   ([el content]
    (doto (create el)
      (render content))))

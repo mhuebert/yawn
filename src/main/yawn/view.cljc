@@ -1,12 +1,14 @@
 (ns yawn.view
   (:require #?@(:cljs [["react" :as react]
+                       ["react-dom" :refer [createPortal]]
                        ["use-sync-external-store/shim" :refer [useSyncExternalStore]]])
             [clojure.string :as str]
             [clojure.walk :as walk]
             [applied-science.js-interop :as j]
             [yawn.env :as env]
-            [yawn.compiler :as c]
-            #?(:cljs [yawn.convert]))
+            [yawn.compiler :as compiler]
+            [yawn.convert :as convert]
+            [yawn.util :as u])
   #?(:cljs (:require-macros yawn.view)))
 
 (declare el) ;; for type hints
@@ -18,7 +20,7 @@
 (defmacro x
   "Converts `form` to React element"
   [form]
-  (c/compile hiccup-opts form))
+  (compiler/compile hiccup-opts form))
 
 (defn parse-args [args & preds]
   (loop [args args
@@ -123,3 +125,8 @@
 
 (defmacro defview [name & args]
   (defview:impl name args))
+
+#?(:cljs
+   (defn portal [^js el react-el]
+     (createPortal (convert/x react-el)
+                   (u/find-or-create-element el))))
