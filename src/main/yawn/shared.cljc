@@ -16,52 +16,52 @@
                       (str/starts-with? s "aria-")))
              (str/replace #"-(.)" (fn [[_ s]] (str/upper-case s)))))))
 
-(defn camel-case-keys->map [m]
-  (reduce-kv
-   (fn [m k v]
-     (assoc m (camel-case (name k)) v))
-   {} m))
-
-#?(:cljs
-   (defn camel-case-keys->obj [m]
+(defn camel-case-keys [m]
+  #?(:clj
      (reduce-kv
       (fn [m k v]
-        (j/!set m (camel-case (name k)) v))
+        (assoc m (if (string? k) k (camel-case (name k))) v))
+      {} m)
+     :cljs
+     (reduce-kv
+      (fn [m k v]
+        (j/!set m (if (string? k) k (camel-case (name k))) v))
       #js{} m)))
 
-(defn warn-on-interpret [options expr]
+(def ^:dynamic *throw-on-interpret* false)
+(def ^:dynamic *warn-on-interpret* false)
+
+(defn warn-on-interpret [expr]
   (when-not (:interpet (meta expr))
-    (when (:warn-on-interpretation? options)
+    (when *throw-on-interpret*
+      (throw (ex-info "Inferred form" {:form expr})))
+    (when *warn-on-interpret*
       (println (str "WARNING: interpreting form " (pr-str expr)
                     (let [{:keys [line file]} (meta expr)]
                       (when (and line file)
-                        (str ", " file ":" line))))))
-    (when (:throw-on-interpretation? options)
-      (throw (ex-info "Interpreting form" {:form expr})))))
+                        (str ", " file ":" line))))))))
 
 (defn join-strings-compile
   "Joins strings, space separated"
-  [options sep v]
+  [sep v]
   (cond (string? v) v
         (vector? v)
         (if (every? string? v)
           (str/join sep v)
           `(~'clojure.core/str ~@(interpose sep v)))
         :else
-        (do
-          (warn-on-interpret options v)
-          `(~'yawn.compiler/maybe-interpret-class ~(:js-options-sym options) ~v))))
+        `(~'yawn.compiler/maybe-interpret-class ~v)))
 
 (defn camel-case-keys-compile
   "returns map with keys camel-cased"
-  [options m]
+  [m]
   (if (map? m)
-    (camel-case-keys->map m)
+    (camel-case-keys m)
     (do
-      (warn-on-interpret options m)
-      `(camel-case-keys->obj ~m))))
+      (warn-on-interpret m)
+      `(camel-case-keys ~m))))
 
-(defn format-style-prop->map [options v]
+(defn format-style-prop->map [v]
   (if (vector? v)
-    (mapv (partial camel-case-keys-compile options) v)
-    (camel-case-keys-compile options v)))
+    (mapv camel-case-keys-compile v)
+    (camel-case-keys-compile v)))

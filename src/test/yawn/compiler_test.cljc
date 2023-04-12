@@ -1,18 +1,15 @@
 (ns yawn.compiler-test
   (:refer-clojure :exclude [compile])
-  (:require [applied-science.js-interop :as j]
+  (:require #?(:clj [yawn.compiler :as compiler :refer [compile compile-props]])
+            #?(:clj [yawn.infer :as infer])
             [clojure.test :as t :refer [deftest is are]]
-            [yawn.convert :as convert]
-            [yawn.compiler :as compiler :refer [compile]]
-            [yawn.env :as env]
-            [yawn.infer :as infer]
+            [yawn.convert :as convert :refer [interpret-props]]
+            [yawn.shared :refer [*throw-on-interpret*]]
             [yawn.view :as v]
             #?@(:cljs
                 [["react" :as react :refer [Fragment] :rename {createElement rce}]
                  ["react-dom/server" :as rdom]]))
   #?(:cljs (:require-macros [yawn.compiler-test :refer [--]])))
-
-(env/def-options no-interpret {:throw-on-interpretation? :throw})
 
 (defmacro -- [doc & pairs]
   (if (= 1 (count pairs))
@@ -21,9 +18,6 @@
                             (remove #{:=>})
                             (partition 2))]
              `(is (= ~a ~b) ~doc)))))
-
-(def interpret-props (partial convert/interpret-props convert/defaults))
-(def compile-props (partial compiler/compile-props convert/defaults))
 
 #?(:cljs
    (do
@@ -35,35 +29,7 @@
    (do
      (def to-string rdom/renderToStaticMarkup)
 
-     (comment
-
-      (e '(compiler/x [:div]))
-
-      (e '(require '[yawn.env :as env]))
-      (e 'env/!compile-opts)
-      (e '(ns cljs.user
-            (:require [yawn.env :as env])))
-      (e '(env/def-options opts {}))
-
-      (e '(require '[yawn.compiler :as c]))
-      (e '(compiler/x [:div]))
-
-      (ns cljs.user)
-
-      (eval-sync '(do to-string))
-      (eval-sync 'to-string)
-      (eval-sync
-       '(require #_'[yawn.compiler :as compiler]
-         '[yawn.convert :as convert])))
-
-     (deftest macro-tests
-
-       (is
-        (thrown? js/Error
-                 (let [props {:a 1}]
-                   (to-string (compiler/x [:div props]))))
-        "Dynamic props must be annotated for the compiler")
-
+     (deftest convert-tests
        (is
         (= (let [props {:a 1}]
              (to-string (convert/x [:div props])))
@@ -71,8 +37,7 @@
         "Interpreter can handle dynamic props")
 
        (are [expr html]
-         (= (to-string (compiler/x expr))
-            (to-string (convert/x convert/defaults expr))
+         (= (to-string (convert/x expr))
             html)
 
          ;; element
@@ -123,13 +88,25 @@
            [:div {:x 1 :& props}])
          "<div x=\"1\" style=\"font-size:12px\"></div>"
 
-         ;; ^:inline
-         ;; ^js, inline and as metadata on function
+
+         ;; ^js as metadata on function
          ;; ^:interpret
+         ;; ^:el
          ))))
+
+(comment
+ (compiler/compile-or-interpret-child
+  '(let [props {:a 1}] [:div props])))
 
 #?(:clj
    (deftest compile-tests
+
+     (binding [*throw-on-interpret* true]
+       (is
+        (thrown? java.lang.Exception
+                 (macroexpand '(yawn.infer/maybe-interpret 'a)))
+        "Dynamic props must be annotated for the compiler"))
+
 
      (-- "DOM tags are compiled to `react/createElement` calls."
          (compile '[:div])
@@ -137,9 +114,7 @@
 
      (-- "Symbol tags are compiled to function calls"
          (compiler/compile '[my-fn 1 2 3])
-         :=> '(yawn.infer/maybe-interpret
-               yawn.convert/defaults
-               (my-fn 1 2 3)))
+         :=> '(yawn.infer/maybe-interpret (my-fn 1 2 3)))
 
      (-- "a literal map is compiled to a prop object"
          (compile '[:span {:class "a"}])
@@ -149,14 +124,14 @@
 
      (-- "a symbol or expression in 1st position is treated as a child element"
          (compile '[:span a])
-         :=> '(yawn.react/createElement "span" nil (yawn.infer/maybe-interpret yawn.convert/defaults a))
+         :=> '(yawn.react/createElement "span" nil (yawn.infer/maybe-interpret a))
 
          (compile '[:span (a-fn)])
-         :=> '(yawn.react/createElement "span" nil (yawn.infer/maybe-interpret yawn.convert/defaults (a-fn))))
+         :=> '(yawn.react/createElement "span" nil (yawn.infer/maybe-interpret (a-fn))))
 
      (-- "...unless we tag it with :props metadata"
          (compile '[:span ^:props a])
-         :=> '(yawn.react/createElement "span" (yawn.convert/interpret-props yawn.convert/defaults a)))
+         :=> '(yawn.react/createElement "span" (yawn.convert/interpret-props a)))
 
      (-- "keys are camelCase'd"
          (compile-props {:on-click ()})
@@ -172,7 +147,7 @@
 
      (-- "class may be dynamic - with runtime interpretation"
          (compile-props '{:class x})
-         :=> '{"className" (yawn.compiler/maybe-interpret-class yawn.convert/defaults x)})
+         :=> '{"className" (yawn.compiler/maybe-interpret-class x)})
 
      (-- "classes from tag + props are joined"
          (compile [:h1.b.c {:class "a"}])
@@ -182,7 +157,7 @@
          (compile '[:div.c1 {:class x}])
          :=> '(yawn.react/createElement
                "div"
-               (js-obj "className" (clojure.core/str "c1 " (yawn.compiler/maybe-interpret-class yawn.convert/defaults x))))
+               (js-obj "className" (clojure.core/str "c1 " (yawn.compiler/maybe-interpret-class x))))
          (compile '[:div.c1 {:class ["y" d]}])
          :=> '(yawn.react/createElement
                "div"
@@ -192,11 +167,11 @@
          (compile-props '{:style {:font-weight 600}})
          :=> {"style" {"fontWeight" 600}}
          (compile-props '{:style x})
-         :=> '{"style" (yawn.shared/camel-case-keys->obj x)})
+         :=> '{"style" (yawn.shared/camel-case-keys x)})
 
      (-- "multiple style maps may be passed (for RN)"
          (compile-props '{:style [{:font-size 10} x]})
-         :=> '{"style" [{"fontSize" 10} (yawn.shared/camel-case-keys->obj x)]})
+         :=> '{"style" [{"fontSize" 10} (yawn.shared/camel-case-keys x)]})
 
      (-- "special cases of key renaming"
          (->> (compile [:div {:for 1 ;; special case
@@ -223,12 +198,12 @@
      (-- "a symbol tag is assumed to be a regular function that returns a React element.
        this is compiled to a regular function call - with no special handling of \"props\""
          (compile '[my-fn 1 2 3])
-         :=> '(yawn.infer/maybe-interpret yawn.convert/defaults (my-fn 1 2 3)))
+         :=> '(yawn.infer/maybe-interpret (my-fn 1 2 3)))
 
-     (-- "arguments that look like hiccup forms are compiled unless tagged with ^:inline"
+     (-- "arguments that look like hiccup forms are compiled unless tagged with ^:el"
          (compile '[my-fn [:div]]))
      (compile '[my-fn [other-fn]])
-     (compile '[my-fn ^:inline [other-fn]])
+     (compile '[my-fn ^:el [other-fn]])
 
      ;; to invoke a symbol with createElement (instead of calling it as a function),
      ;; add a ^js hint or use `:>` as the tag
@@ -254,8 +229,8 @@
          :=> true
          (skip? [nil])
          :=> true
-         ;; skip interpretation by adding ^:inline or ^js
-         (skip? '[^:inline (my-fn)])
+         ;; skip interpretation by adding ^:el or ^js
+         (skip? '[^:el (my-fn)])
          :=> true
          (skip? '[^js (my-fn)])
          :=> true)
@@ -265,13 +240,13 @@
          (compile '[:div
                     a ;; maybe-interpret (not as props)
                     ^:interpret b ;; interpret-form
-                    ^:inline c ;; inline
+                    ^:el c ;; inline
                     ^js d])
          '(yawn.react/createElement
            "div"
            nil
-           (yawn.infer/maybe-interpret yawn.convert/defaults a)
-           (yawn.convert/x yawn.convert/defaults b)
+           (yawn.infer/maybe-interpret a)
+           (yawn.convert/x b)
            c
            d))
 
@@ -313,7 +288,7 @@
 
      (-- "ignore inner forms of unknown operators"
          (compile '(hello [:div]))
-         '(yawn.infer/maybe-interpret yawn.convert/defaults (hello [:div])))
+         '(yawn.infer/maybe-interpret (hello [:div])))
 
      (comment
       ;; interpret

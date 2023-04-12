@@ -1,7 +1,6 @@
 (ns yawn.root
   (:require ["react-dom" :refer [createPortal]]
             ["react-dom/client" :refer [createRoot]]
-            [yawn.view :as v]
             [yawn.util :as u]))
 
 (defn render [^js root react-el] (.render root react-el))

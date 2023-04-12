@@ -12,9 +12,12 @@ Our approach:
 
 Features supported out of the box:
 
-- The `:class` key may be provided as a string, or vector of strings.
+- The `:class` key may be provided as a string, or vector of strings (joined at compile time)
 - Keyword tags may contain IDs and classes like so: `:div#id.class-1.class-2`
-- Keyword tags can be resolved to strings (for vanilla React) or elements in a specified namespace (for React Native) using `:namespace-resolvers {:_ <default> :other-ns <other>}`
 - Symbol tags like `[my-fn {}]` are compiled to function calls, eg `(my-fn {})`. Children are untouched unless they are vectors that appear to be hiccup forms, in which case they are compiled.
-- The `:>` tag compiles to `createElement` instead of a function call, eg `[:> my-react-constructor <props> child-1 child-2]`. Props (if provided) are converted to javascript.
-- The `:<>` tag resolves to a react Fragment.
+- Special tags:
+  - `:>` compiles to `createElement` instead of a function call, eg `[:> my-react-constructor <props> child-1 child-2]`. Props (if provided) are converted to javascript.
+  - `:<>`, `:...` and `:Fragment` resolve to `react/Fragment`.
+  - `:Suspense` resolves to a `react/Suspense`.
+  - `:Portal` resolves to `react-dom/Portal`
+- Props must be a literal map, or have ^:props metadata, eg. `[:div ^:props foo ...]`

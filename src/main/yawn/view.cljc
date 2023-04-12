@@ -5,7 +5,6 @@
             [clojure.string :as str]
             [clojure.walk :as walk]
             [applied-science.js-interop :as j]
-            [yawn.env :as env]
             [yawn.compiler :as compiler]
             [yawn.convert :as convert]
             [yawn.util :as u])
@@ -15,12 +14,8 @@
 
 (def ^boolean refresh-enabled? #?(:cljs (exists? js/ReactRefreshRuntime)))
 
-(env/def-options hiccup-opts {})
-
-(defmacro x
-  "Converts `form` to React element"
-  [form]
-  (compiler/compile hiccup-opts form))
+(defmacro x [form] (compiler/compile form))
+(defmacro <> [form] (compiler/compile form))
 
 (defn parse-args [args & preds]
   (loop [args args

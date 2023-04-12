@@ -1,6 +1,6 @@
 (ns yawn.demo
   (:require [yawn.view :as v]
-            [yawn.view.dom :as dom]
+            [yawn.root :as root]
             [yawn.view.hooks :as hooks]))
 
 (v/defview counter [^string name]
@@ -8,4 +8,4 @@
     [:div {:on-click #(x! inc)} x name]))
 
 (defn init []
-  (dom/mount :demo #(#'counter "clicks")))
+  (root/create :demo (v/x [counter "clicks"])))

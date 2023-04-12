@@ -1,24 +1,45 @@
 (ns yawn.convert
-  (:require #?@(:cljs [[applied-science.js-interop :as j]
-                       ["react" :as React]]
-                :clj  [[net.cgrand.macrovich :as m]])
+  (:require #?(:clj [net.cgrand.macrovich :as m])
+            [applied-science.js-interop :as j]
             [clojure.string :as str]
-            [yawn.env :as env]
             [yawn.util :as util]
             [yawn.react :as react]
             [yawn.shared :as shared])
-  #?(:cljs (:require-macros yawn.convert
+  #?(:cljs (:require-macros [yawn.convert :refer [clj']]
                             [net.cgrand.macrovich :as m])))
 
-(defn warn-on-interpret [options expr]
-  (when-not (:interpet (meta expr))
-    (when (:warn-on-interpretation? options)
-      (println (str "WARNING: interpreting form " (pr-str expr)
-                    (let [{:keys [line file]} (meta expr)]
-                      (when (and line file)
-                        (str ", " file ":" line))))))
-    (when (:throw-on-interpretation? options)
-      (throw (ex-info "Interpreting form" {:form expr})))))
+(defmacro clj' [x] (m/case :clj `'~x :cljs x))
+
+(def rewrite-for? true)
+
+(defn custom-elements [k]
+  (case k
+    "<>" (clj' yawn.react/Fragment)
+    "..." (clj' yawn.react/Fragment)
+    ">" "createElement"
+    "Fragment" (clj' yawn.react/Fragment)
+    "Suspense" (clj' yawn.react/Suspense)
+    "Portal" (clj' yawn.react/Portal)
+    nil))
+
+(defn add-prop [m k v]
+  (let [kname (name k)]
+    (case kname
+      "class"
+      #?(:clj  (assoc m "className" (yawn.shared/join-strings-compile " " v))
+         :cljs (j/!set m "className" (yawn.shared/join-strings " " v)))
+      "for"
+      #?(:clj  (assoc m "htmlFor" v)
+         :cljs (j/!set m "htmlFor" v))
+      "style"
+      #?(:clj  (assoc m "style" (yawn.shared/format-style-prop->map v))
+         :cljs (j/!set m "style" (yawn.shared/camel-case-keys v)))
+      "&" (reduce-kv yawn.convert/add-prop m v)
+      (let [k (if (string? k)
+                k
+                (shared/camel-case kname))]
+        #?(:cljs (doto m (unchecked-set k v))
+           :clj  (assoc m k v))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; key transformation
@@ -48,9 +69,6 @@
 #?(:cljs
    (defn update-class->obj [obj class-str]
      (j/update! obj :className update-class* class-str)))
-
-(defn update-class->map [obj class-str]
-  (update obj :className update-class* class-str))
 
 (defn join-strings [sep v]
   (if (vector? v)
@@ -85,85 +103,20 @@
                       (update 2 #(when % (dots->spaces %))))))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; parse style props
-
-#?(:cljs
-   (defn format-style-prop->object [v]
-     (if (vector? v)
-       (mapv shared/camel-case-keys->obj v)
-       (shared/camel-case-keys->obj v))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; parse props (top-level)
 
-#?(:cljs
-   (defn add-prop->object [options prop-handlers m k v]
-     {:pre [(object? prop-handlers)]}
-     (let [kname (if (string? k)
-                   k (shared/camel-case (name k)))]
-       (if-some [handler (j/!get prop-handlers kname)]
-         (handler options prop-handlers m kname v)
-         (j/!set m kname v)))))
-
-(defn add-prop->map [options prop-handlers m k v]
-  {:pre [(map? prop-handlers)]}
-  (let [kname (if (string? k)
-                k (shared/camel-case (name k)))]
-    (if-some [handler (get prop-handlers kname)]
-      (handler options prop-handlers m kname v)
-      (assoc m kname v))))
-
-(defn interpret-props [options props]
+(defn interpret-props [props]
   #?(:cljs (if
             (object? props)
              props
-             (let [handlers (j/!get options :prop-handlers)]
-               (reduce-kv
-                (fn [m k v] (add-prop->object options handlers m k v))
-                #js{}
-                props)))
-     :clj  (let [handlers (get options :prop-handlers)]
              (reduce-kv
-              (fn [m k v] (add-prop->map options handlers m k v))
-              {}
-              props))))
-
-
-(env/set-defaults!
- '{;; settings for the compiler:
-   :warn-on-interpretation? false
-   :skip-types #{number
-                 string
-                 function
-                 js
-                 yawn.view/el}
-   :rewrite-for? true
-
-   ;; relevant for the interpreter:
-   :custom-elements {"Fragment" yawn.react/Fragment
-                     "<>" yawn.react/Fragment
-                     "..." yawn.react/Fragment
-                     "Suspense" yawn.react/Suspense
-                     ">" "yawn/create-element"}
-   :prop-handlers {"class"
-                   (fn [options handlers m k v]
-                     {:compile (assoc m "className" (yawn.shared/join-strings-compile options " " v))
-                      :interpret (applied-science.js-interop/!set m "className" (yawn.shared/join-strings " " v))})
-                   "for"
-                   (fn [options handlers m k v]
-                     {:compile (assoc m "htmlFor" v)
-                      :interpret (applied-science.js-interop/!set m "htmlFor" v)})
-                   "style"
-                   (fn [options handlers m k v]
-                     {:compile (assoc m k (yawn.shared/format-style-prop->map options v))
-                      :interpret (applied-science.js-interop/!set m k (yawn.convert/format-style-prop->object v))})
-                   "&"
-                   (fn [options handlers m k v]
-                     (reduce-kv (fn [m k v] ({:compile yawn.convert/add-prop->map
-                                              :interpret yawn.convert/add-prop->object}
-                                             options handlers m k v)) m v))}})
-
-(env/def-options defaults {})
+              (fn [m k v] (add-prop m k v))
+              #js{}
+              props))
+     :clj  (reduce-kv
+            (fn [m k v] (add-prop m k v))
+            {}
+            props)))
 
 (declare x)
 
@@ -181,7 +134,7 @@
         (if (undefined? result)
           result
           (if (or (and (object? result)
-                       (not (React/isValidElement result)))
+                       (not (react/valid-element? result)))
                   (map? result))
             result
             js/undefined))))
@@ -194,73 +147,68 @@
     (defn make-element
       "Returns a React element. `tag` may be a string or a React component (a class or a function).
        Children will be read from `form` beginning at index `start`."
-      ([options element-type form ^number prop-position]
+      ([element-type form ^number prop-position]
        (let [props (-nth form prop-position js/undefined)
              props? (not (identical? js/undefined props))]
-         (make-element options
-                       element-type
-                       (when props?
-                         (interpret-props options props))
+         (make-element element-type
+                       (when props? (interpret-props props))
                        form
                        (cond-> prop-position props? inc))))
-      ([options element-type props-obj form children-start]
+      ([element-type props-obj form children-start]
        (let [form-count (count form)]
          (case (- form-count children-start) ;; fast cases for small numbers of children
            0 (.call react/createElement nil element-type props-obj)
-           1 (.call react/createElement nil element-type props-obj (x options (nth form children-start)))
-           2 (.call react/createElement nil element-type props-obj (x options (nth form children-start)) (x options (nth form (+ children-start 1))))
-           3 (.call react/createElement nil element-type props-obj (x options (nth form children-start)) (x options (nth form (+ children-start 1))) (x options (nth form (+ children-start 2))))
+           1 (.call react/createElement nil element-type props-obj (x (nth form children-start)))
+           2 (.call react/createElement nil element-type props-obj (x (nth form children-start)) (x (nth form (+ children-start 1))))
+           3 (.call react/createElement nil element-type props-obj (x (nth form children-start)) (x (nth form (+ children-start 1))) (x (nth form (+ children-start 2))))
            (let [out #js[element-type props-obj]]
              (loop [i children-start]
                (if (== i form-count)
                  (.apply react/createElement nil out)
                  (do
-                   (.push out (x options (nth form i)))
+                   (.push out (x (nth form i)))
                    (recur (inc i))))))))))
 
-    (defn interpret-vec [options form]
+    (defn interpret-vec [form]
       (util/if-defined [form-0 (-nth form 0 js/undefined)]
         (if (keyword? form-0)
-          (let [tag (j/get-in options [:custom-elements (name form-0)]
-                              (if (keyword? form-0)
-                                (name form-0)
-                                form-0))]
-            (j/let [create-element? (identical? tag "yawn/create-element")
-                    tag (if create-element? (-nth form 1) tag)
-                    prop-position (if create-element? 2 1)
-                    props (get-props form prop-position)
-                    props? (defined? props)
-                    static-tag? (string? tag)
-                    parsed-tag (when static-tag?
-                                 (parse-tag tag))
-                    tag (if static-tag?
-                          (aget parsed-tag 0)
-                          tag)
-                    props (cond-> props
-                                  props?
-                                  (->> (interpret-props options))
-                                  (string? tag)
-                                  (add-static-props parsed-tag))
-                    children-start (cond-> prop-position
-                                           props? inc)]
-              (make-element options
-                            tag
-                            props
-                            form
-                            children-start)))
-          (x options (apply form-0 (rest form))))
+          (let [tag (name form-0)
+                tag (or (custom-elements tag) tag)
+                create-element? (identical? tag "createElement")
+                tag (if create-element? (-nth form 1) tag)
+                prop-position (if create-element? 2 1)
+                props (get-props form prop-position)
+                props? (defined? props)
+                static-tag? (string? tag)
+                parsed-tag (when static-tag?
+                             (parse-tag tag))
+                tag (if static-tag?
+                      (aget parsed-tag 0)
+                      tag)
+                props (cond-> props
+                              props?
+                              interpret-props
+                              (string? tag)
+                              (add-static-props parsed-tag))
+                children-start (cond-> prop-position
+                                       props? inc)]
+            (make-element tag
+                          props
+                          form
+                          children-start))
+          (x (apply form-0 (rest form))))
         form))
 
     (defn x
       "Convert form to a React element"
-      ([form]
-       (x defaults form))
-      ([options form]
-       (cond (vector? form) (interpret-vec options form)
-             (seq? form) (make-element options react/Fragment nil (vec form) 0)
-             (array? form) (.apply react/createElement nil form)
-             (satisfies? IElement form) (to-element form)
-             :else form)))))
+      [form]
+      (cond (react/valid-element? form) form
+            (vector? form) (interpret-vec form)
+            (seq? form) (make-element react/Fragment nil (vec form) 0)
+            (array? form) (.apply react/createElement nil form)
+            (satisfies? IElement form) (to-element form)
+            :else form))
+    (defn <> [form] (x form))))
 
 (comment
  (x [:div])

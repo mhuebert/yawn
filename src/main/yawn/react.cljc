@@ -1,9 +1,11 @@
 (ns yawn.react
-  #?(:cljs (:require ["react" :as React])))
+  #?(:cljs (:require ["react" :as react]
+                     ["react-dom" :as react-dom]
+                     [yawn.util :as u])))
 
-(def Fragment #?(:cljs React/Fragment))
-(def Suspense #?(:cljs React/Suspense))
-
-#?(:cljs (def ^function createElement #?(:cljs React/createElement))
-   :clj (def createElement))
-
+#?(:cljs (def Fragment react/Fragment))
+#?(:cljs (def Suspense react/Suspense))
+#?(:cljs (def ^function createElement react/createElement))
+#?(:cljs (defn valid-element? [x] (react/isValidElement x)))
+#?(:cljs (defn Portal [target-element content]
+           (react-dom/createPortal (u/find-or-create-element target-element) content)))

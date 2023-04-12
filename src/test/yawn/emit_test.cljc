@@ -1,6 +1,6 @@
 (ns yawn.emit-test
   (:require [yawn.compiler :as c]
-            [yawn.react])
+            #?(:cljs [yawn.react]))
   #?(:cljs (:require-macros [yawn.emit-test :refer [emit]])))
 
 (defmacro emit [label expr]
