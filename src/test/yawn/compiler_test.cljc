@@ -3,7 +3,7 @@
   (:require #?(:clj [yawn.compiler :as compiler :refer [compile compile-props]])
             #?(:clj [yawn.infer :as infer])
             [clojure.test :as t :refer [deftest is are]]
-            [yawn.convert :as convert :refer [interpret-props]]
+            [yawn.convert :as convert :refer [convert-props]]
             [yawn.shared :refer [*throw-on-interpret*]]
             [yawn.view :as v]
             #?@(:cljs
@@ -131,7 +131,7 @@
 
      (-- "...unless we tag it with :props metadata"
          (compile '[:span ^:props a])
-         :=> '(yawn.react/createElement "span" (yawn.convert/interpret-props a)))
+         :=> '(yawn.react/createElement "span" (yawn.convert/convert-props a)))
 
      (-- "keys are camelCase'd"
          (compile-props {:on-click ()})

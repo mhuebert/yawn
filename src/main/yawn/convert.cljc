@@ -106,20 +106,22 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; parse props (top-level)
 
-(defn interpret-props
-  ([props] (interpret-props #?(:cljs #js{} :clj {}) props))
-  ([init props]
-   #?(:cljs (if
-             (object? props)
-              props
-              (reduce-kv
-               (fn [m k v] (add-prop m k v))
-               init
-               props))
-      :clj  (reduce-kv
-             (fn [m k v] (add-prop m k v))
-             init
-             props))))
+(defn convert-props [props]
+  #?(:cljs (if
+            (object? props)
+             props
+             (reduce-kv add-prop #js{} props))
+     :clj  (reduce-kv add-prop {} props)))
+
+#?(:cljs
+   (defn merge-js-props!
+     "Copies properties from p2 to p1 (overwriting), merges `className` and `style`"
+     [p1 p2]
+     (doseq [[k v] (js/Object.entries p2)]
+       (case k "style" (j/!update p1 "style" #(if-not % v (j/merge! % v)))
+               "className" (j/!update p1 "className" #(if-not % v (str % " " v)))
+               (j/!set p1 k v)))
+     p1))
 
 (declare x)
 
@@ -154,7 +156,7 @@
        (let [props (-nth form prop-position js/undefined)
              props? (not (identical? js/undefined props))]
          (make-element element-type
-                       (when props? (interpret-props props))
+                       (when props? (convert-props props))
                        form
                        (cond-> prop-position props? inc))))
       ([element-type props-obj form children-start]
@@ -190,7 +192,7 @@
                       tag)
                 props (cond-> props
                               props?
-                              interpret-props
+                              convert-props
                               (string? tag)
                               (add-static-props parsed-tag))
                 children-start (cond-> prop-position

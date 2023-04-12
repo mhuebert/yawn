@@ -153,41 +153,28 @@
         :interpret `(~'yawn.convert/x ~form)
         form)))
 
-(defn compile-props
-  [props]
-  (reduce-kv
-   (fn [m k v]
-     (convert/add-prop m k v))
-   {}
-   props))
-
-
-(defn compile-element
-  ([el] (compile-element el nil))
-  ([el initial-props]
-   (let [[el id class-string] (if (or (keyword? el)
-                                      (string? el))
-                                (convert/parse-tag (name el))
-                                [el nil nil])
-         initial-props (some-> initial-props compile-props)
-         initial-className (some->> [class-string (get initial-props "className")]
-                               (keep identity)
-                               seq
-                               (str/join " "))
-         initial-style (some-> (get initial-props "style") literal->js)
-         initial-props (-> initial-props (dissoc "className" "style") literal->js)]
-     (tap> [:ip initial-props :s initial-style :c initial-className])
-     `(let [update-props# (fn [props#]
-                            (-> props#
-                                ~@(when id [`(j/!set :id ~id)])
-                                ~@(when initial-className [`(~'yawn.convert/update-className ~initial-className)])
-                                ~@(when initial-props [`(j/extend! ~initial-props)])
-                                ~@(when initial-style [`(j/update! :style j/extend! ~initial-style)])))]
-        (fn [props# & children#]
-          (let [[props# children#] (if (map? props#)
-                                     [(convert/interpret-props props#) children#]
-                                     [(cljs.core/js-obj) (cons props# children#)])]
-            (~'yawn.convert/make-element ~el (update-props# props#) children# 0)))))))
+(defn view-from-element
+  ([el] (view-from-element el nil))
+  ([original-el initial-props]
+   (let [[el id class-string] (if (or (keyword? original-el)
+                                      (string? original-el))
+                                (convert/parse-tag (name original-el))
+                                [original-el nil nil])
+         initial-props (-> (convert/convert-props initial-props)
+                           (cond-> id (assoc "id" id)
+                                   class-string (update "className" #(if %
+                                                                       (join-strings-compile " " [% class-string])
+                                                                       class-string))))]
+     `(let [initial-props# ~(literal->js initial-props)]
+        (fn [new-props# & children#]
+          (let [new-props?# (map? new-props#)
+                props# (cond->> initial-props#
+                                new-props?#
+                                (~'yawn.convert/merge-js-props! (convert/convert-props new-props#)))
+                children# (cond->> children#
+                                   (not new-props?#)
+                                   (cons new-props#))]
+            (~'yawn.convert/make-element ~el props# children# 0)))))))
 
 (defn emit
   "Emits the final react js code"
@@ -218,7 +205,7 @@
            (as-> (or props {}) props*
                  (dissoc props* :&)
                  (into props* (filter val) {:id id :key key :ref ref})
-                 (compile-props props*)
+                 (convert/convert-props props*)
                  (cond-> props*
                          class-string (update "className" #(cond (nil? %) class-string
                                                                  (string? %) (str class-string " " %)
@@ -227,13 +214,13 @@
                  (if (:& props)
                    `(-> ~props*
                         (~'applied-science.js-interop/extend!
-                         (~'yawn.convert/interpret-props ~(:& props))))
+                         (~'yawn.convert/convert-props ~(:& props))))
                    props*))
            ;; dynamic clj, need to interpret & then add static props
            :dynamic
            (runtime-static-props
             (when props
-              `(~'yawn.convert/interpret-props ~props)))
+              `(~'yawn.convert/convert-props ~props)))
            ;; skip interpret, but add static props
            :js-object
            (runtime-static-props props))

@@ -21,8 +21,8 @@
 (defmacro from-element
   "Creates a view function from an element like :div#id.class or package/ElementName.
    If props are supplies, they will be merged with props supplied at callsite."
-  ([kw] (compiler/compile-element kw))
-  ([kw props] (compiler/compile-element kw props)))
+  ([kw] (compiler/view-from-element kw))
+  ([kw props] (compiler/view-from-element kw props)))
 
 (defn parse-args [args & preds]
   (loop [args args
