@@ -145,7 +145,7 @@
             js/undefined))))
 
     (j/defn add-static-props [props-obj ^:js [tag-name id class-string]]
-      (cond-> props-obj
+      (cond-> (or props-obj #js{})
               (defined? class-string) (update-className class-string)
               (defined? id) (applied-science.js-interop/!set :id id)))
 
