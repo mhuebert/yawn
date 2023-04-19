@@ -112,18 +112,28 @@
                `(~'js-obj ~@(->> x (apply concat) (map literal->js))))
     :else x))
 
-(defn join-strings-compile
-  "Joins strings, space separated"
-  [sep v]
+(defn join-strings-compile [v]
   (cond (string? v) v
-        (vector? v)
-        (if (every? string? v)
-          (str/join sep v)
-          `(~'clojure.core/str ~@(interpose sep v)))
-        :else
-        (do
-          (shared/warn-on-interpret v)
-          `(~'yawn.compiler/maybe-interpret-class ~v))))
+        (coll? v)
+        (let [v (interpose " " v)
+              v (->> (partition-by string? v)
+                     (mapcat (fn [v]
+                               (if (string? (first v))
+                                 [(-> (str/join v)
+                                      (str/replace #"\s+" " "))]
+                                 v))))]
+          (if (and (= 1 (count v)) (string? (first v)))
+            (first v)
+            (list* `str v)))
+        :else (do
+                (shared/warn-on-interpret v)
+                `(~'yawn.compiler/maybe-interpret-class ~v))))
+
+(comment
+ (add-tap println)
+ (= `(str ~'a " b " ~'c " " ~'d)
+    (join-strings-compile '[a "b   " c d]))
+ (= "a b c d" (join-strings-compile ["a" "b" "c" "d"])))
 
 (defn compile-vec
   "Returns an unevaluated form that returns a react element"
@@ -163,7 +173,7 @@
          initial-props (-> (convert/convert-props initial-props)
                            (cond-> id (assoc "id" id)
                                    class-string (update "className" #(if %
-                                                                       (join-strings-compile " " [% class-string])
+                                                                       (join-strings-compile [% class-string])
                                                                        class-string))))]
      `(let [initial-props# ~(literal->js initial-props)]
         (fn [new-props# & children#]

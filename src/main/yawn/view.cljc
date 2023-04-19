@@ -128,6 +128,12 @@
 (defmacro defview [name & args]
   (defview:impl name args))
 
+#?(:clj
+   (defmacro classes [v]
+     (compiler/join-strings-compile v)))
+
+(defn classes [v] (convert/join-strings " " v))
+
 #?(:cljs
    (defn portal [^js el react-el]
      (createPortal (convert/x react-el)

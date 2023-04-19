@@ -57,10 +57,10 @@
 ;; class string transformation
 
 (defn #?(:cljs ^string class-string
-         :clj  class-string) [classes]
-  (cond (string? classes) classes
-        (vector? classes) (str/join " " classes)
-        :else classes))
+         :clj  class-string) [v]
+  (cond (string? v) v
+        (vector? v) (str/join " " v)
+        :else v))
 
 (defn- update-class* [x class-str]
   (if (some? x)
