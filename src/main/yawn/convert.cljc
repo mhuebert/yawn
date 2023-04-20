@@ -144,10 +144,10 @@
             result
             js/undefined))))
 
-    (j/defn add-static-props [props-obj ^:js [tag-name id class-string]]
-      (cond-> (or props-obj #js{})
+    (defn add-static-props [props-obj id class-string]
+      (cond-> props-obj
               (defined? class-string) (update-className class-string)
-              (defined? id) (applied-science.js-interop/!set :id id)))
+              (defined? id) (applied-science.js-interop/assoc! :id id)))
 
     (defn make-element
       "Returns a React element. `tag` may be a string or a React component (a class or a function).
@@ -177,27 +177,19 @@
     (defn interpret-vec [form]
       (util/if-defined [form-0 (-nth form 0 js/undefined)]
         (if (keyword? form-0)
-          (let [tag (name form-0)
-                tag (or (custom-elements tag) tag)
-                create-element? (identical? tag "createElement")
-                tag (if create-element? (-nth form 1) tag)
-                prop-position (if create-element? 2 1)
-                props (get-props form prop-position)
-                props? (defined? props)
-                static-tag? (string? tag)
-                parsed-tag (when static-tag?
-                             (parse-tag tag))
-                tag (if static-tag?
-                      (aget parsed-tag 0)
-                      tag)
-                props (cond-> props
-                              props?
-                              convert-props
-                              (string? tag)
-                              (add-static-props parsed-tag))
-                children-start (cond-> prop-position
-                                       props? inc)]
-            (make-element tag
+          (j/let [^js [tag id class-name] (parse-tag (name form-0))
+                  tag (or (custom-elements tag) tag)
+                  create-element? (identical? tag "createElement")
+                  element (if create-element? (-nth form 1) tag)
+                  prop-position (if create-element? 2 1)
+                  props (get-props form prop-position)
+                  props? (defined? props)
+                  props (-> props
+                            (cond-> props? convert-props)
+                            (add-static-props id class-name))
+                  children-start (cond-> prop-position
+                                         props? inc)]
+            (make-element element
                           props
                           form
                           children-start))
