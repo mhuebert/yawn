@@ -117,10 +117,11 @@
    (defn merge-js-props!
      "Copies properties from p2 to p1 (overwriting), merges `className` and `style`"
      [p1 p2]
-     (doseq [[k v] (js/Object.entries p2)]
-       (case k "style" (j/!update p1 "style" #(if-not % v (j/merge! % v)))
-               "className" (j/!update p1 "className" #(if-not % v (str % " " v)))
-               (j/!set p1 k v)))
+     (when p2
+       (doseq [[k v] (js/Object.entries p2)]
+         (case k "style" (j/!update p1 "style" #(if-not % v (j/merge! % v)))
+                 "className" (j/!update p1 "className" #(if-not % v (str % " " v)))
+                 (j/!set p1 k v))))
      p1))
 
 (declare x)

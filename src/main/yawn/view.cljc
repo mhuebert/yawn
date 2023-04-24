@@ -15,8 +15,8 @@
 
 (def ^boolean refresh-enabled? #?(:cljs (exists? js/ReactRefreshRuntime)))
 
-(defmacro x [form] (compiler/compile form))
-(defmacro <> [form] (compiler/compile form))
+(defmacro x [form] (compiler/compile &env form))
+(defmacro <> [form] (compiler/compile &env form))
 
 (defmacro from-element
   "Creates a view function from an element like :div#id.class or package/ElementName.
@@ -138,3 +138,37 @@
    (defn portal [^js el react-el]
      (createPortal (convert/x react-el)
                    (u/find-or-create-element el))))
+
+(defn- as-str [c]
+  (if (vector? c)
+    (str/join " " c)
+    c))
+
+(defn- merge-classes [c1 c2]
+  (str (as-str c1) " " (as-str c2)))
+
+#?(:cljs
+   (defn props
+     ([p1 p2 & more]
+      ^object
+      (reduce props (props p1 p2) more))
+     ([p1 p2]
+      ^object
+      (cond-> (convert/convert-props p1)
+              p2
+              (convert/merge-js-props! (convert/convert-props p2))))
+     ([p]
+      ^object (convert/convert-props p))))
+
+#?(:clj
+   (defmacro props [& props]
+     (let [convert (fn [props]
+                     (if (map? props)
+                       (-> props convert/convert-props compiler/literal->js)
+                       `(convert/convert-props ~props)))
+           props (map convert props)]
+       (with-meta (reduce (fn [p1 p2]
+                            `(~'yawn.convert/merge-js-props! ~p1 ~p2))
+                          (first props)
+                          (rest props))
+                  {:tag 'object}))))

@@ -17,6 +17,8 @@
    [yawn.shared :as shared]
    yawn.react))
 
+(def ^:dynamic *env* nil)
+
 (defn children-as-list
   "Normalize the children of a HTML element."
   [x]
@@ -29,10 +31,11 @@
   (or (when (map? props) :map)
       (when (nil? props) :nil)
       (when (or (seq? props) (symbol? props))
-        (let [props-meta (meta props)]
-          (cond (:props props-meta) :dynamic
-                (#{'object
-                   'js} (:tag props-meta)) :js-object)))
+        (let [props-meta (meta props)
+              tag (or (:tag props-meta) (some->> *env*
+                                                 (infer/infer-type props)))]
+          (cond (or (:props props-meta) (= 'props tag)) :dynamic
+                (#{'object 'js} tag) :js-object)))
       :no-props))
 
 (defn analyze-vec
@@ -239,20 +242,12 @@
       `(~'yawn.infer/maybe-interpret ~(with-meta `(~tag ~@(mapv compile-hiccup-child children)) form-meta)))))
 
 (defn compile
-  [content]
-  ;; TODO
-  ;; handle ::js-ns/Item.x.y.z or ::clj-ns/Item.ns
-  (when-let [env cljs.env/*compiler*]
-    (let [{:keys [js-deps js-aliases]} (ana/get-namespace env (ns-name *ns*))
-          js-aliases (->> js-deps
-                          (map (juxt (comp str :as val) (comp js-aliases key)))
-                          (into {}))]
-      ;; desired:
-      ;; resolve ::menu/Item.x.y.z to the js module, apply classes.
-      '{"menu" module$node_modules$$radix_ui$react_menubar$dist$index,
-        "ava" module$node_modules$$radix_ui$react_avatar$dist$index}))
+  ([content] (compile nil content))
+  ([env content]
+   ;; TODO
+   ;; handle ::js-ns/Item.x.y.z or ::clj-ns/Item.ns
+   (binding [*env* env]
+     (compile-or-interpret-child content))))
 
-  (compile-or-interpret-child content))
-
-(defmacro x [content] (compile content))
-(defmacro <> [content] (compile content))
+(defmacro x [content] (compile &env content))
+(defmacro <> [content] (compile &env content))
