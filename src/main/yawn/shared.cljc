@@ -1,12 +1,10 @@
 (ns yawn.shared
   (:require #?(:cljs [applied-science.js-interop :as j])
+            #?(:clj [net.cgrand.macrovich :as m])
             [clojure.string :as str]
-            [yawn.util :as util]))
-
-(defn join-strings [sep v]
-  (if (vector? v)
-    (str/join sep v)
-    v))
+            [yawn.util :as util])
+  #?(:cljs (:require-macros [net.cgrand.macrovich :as m]
+                            [yawn.shared :refer [clj']])))
 
 (def camel-case
   (util/memo-by-string
@@ -41,27 +39,43 @@
                       (when (and line file)
                         (str ", " file ":" line))))))))
 
-(defn join-strings-compile
-  "Joins strings, space separated"
-  [sep v]
-  (cond (string? v) v
-        (vector? v)
-        (if (every? string? v)
-          (str/join sep v)
-          `(~'clojure.core/str ~@(interpose sep v)))
-        :else
-        `(~'yawn.compiler/maybe-interpret-class ~v)))
 
-(defn camel-case-keys-compile
-  "returns map with keys camel-cased"
-  [m]
-  (if (map? m)
-    (camel-case-keys m)
-    (do
-      (warn-on-interpret m)
-      `(camel-case-keys ~m))))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; parse static tag names
 
-(defn format-style-prop->map [v]
-  (if (vector? v)
-    (mapv camel-case-keys-compile v)
-    (camel-case-keys-compile v)))
+(def ^:private dot-pattern #?(:cljs (js/RegExp "\\." "g")
+                              :clj  "."))
+
+(defn replace-pattern [s pattern rep]
+  #?(:clj  (str/replace s pattern rep)
+     :cljs (.replace s (j/!set pattern :lastIndex 0) rep)))
+
+(defn dots->spaces [s]
+  (replace-pattern s dot-pattern " "))
+
+(def parse-tag
+  "Returns array of [tag-name, id, classes] from a tag-name like div#id.class1.class2"
+  (util/memo-by-string
+   (fn [tag-name]
+     (if (= tag-name "...")
+       #js[tag-name nil nil]
+       (let [pattern #"([^#.]+)?(?:#([^.]+))?(?:\.(.*))?"]
+         #?(:cljs (-> (.exec pattern tag-name)
+                      (.slice 1 4)
+                      (j/update! 2 #(if % (dots->spaces %) %)))
+            :clj  (-> (rest (re-find pattern tag-name))
+                      vec
+                      (update 2 #(when % (dots->spaces %))))))))))
+
+(defmacro clj' [x] (m/case :clj `'~x :cljs x))
+
+(defn custom-elements [k]
+  (case k
+    "<>" (clj' yawn.react/Fragment)
+    "..." (clj' yawn.react/Fragment)
+    ">" "createElement"
+    "el" "createElement"
+    "Fragment" (clj' yawn.react/Fragment)
+    "Suspense" (clj' yawn.react/Suspense)
+    "Portal" (clj' yawn.react/Portal)
+    nil))

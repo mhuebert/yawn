@@ -6,14 +6,10 @@
   weavejester/hiccup -> r0man/sablono -> Hicada."
   (:refer-clojure :exclude [compile])
   (:require
-   [applied-science.js-interop :as j]
    [clojure.string :as str]
-   [cljs.analyzer :as ana]
    [yawn.wrap-return :refer [wrap-return]]
-   [yawn.convert :as convert]
    [yawn.infer :as infer]
    [yawn.util :as util]
-   [yawn.convert :as convert]
    [yawn.shared :as shared]
    yawn.react))
 
@@ -32,11 +28,34 @@
       (when (nil? props) :nil)
       (when (or (seq? props) (symbol? props))
         (let [props-meta (meta props)
-              tag (or (:tag props-meta) (some->> *env*
-                                                 (infer/infer-type props)))]
+              tag (or (:tag props-meta) (some->> *env* (infer/infer-type props)))]
           (cond (or (:props props-meta) (= 'props tag)) :dynamic
-                (#{'object 'js} tag) :js-object)))
+                (#{'object 'js} tag) :js-props)))
       :no-props))
+
+(defn literal->js
+  "Efficiently emit to literal JS form"
+  [x]
+  (cond
+    (nil? x) x
+    (keyword? x) (name x)
+    (string? x) x
+    (vector? x) (apply list 'cljs.core/array (mapv literal->js x))
+    (map? x) (when (seq x)
+               (assert (every? util/primitive? (keys x)))
+               `(~'js-obj ~@(->> x (apply concat) (map literal->js))))
+    :else x))
+
+(defn remove-empty [m]
+  (not-empty (into {} (filter (comp (fn [x] (if (coll? x)
+                                              (seq x)
+                                              (some? x))) val)) m)))
+
+(defn parse-tag [tag]
+  (if (or (keyword? tag) (string? tag))
+    (let [[el id class-string] (shared/parse-tag (name tag))]
+      [el (remove-empty {:id id :class class-string})])
+    [tag nil]))
 
 (defn analyze-vec
   "Given:
@@ -46,11 +65,9 @@
          :class [\"x\" \"y\"]}
     (other)]"
   [[tag & body :as vec]]
-  (let [[tag id class-string] (if (or (keyword? tag)
-                                      (string? tag))
-                                (convert/parse-tag (name tag))
-                                [tag nil nil])
-        tag-override (convert/custom-elements tag)
+  (let [[tag tag-props] (parse-tag tag)
+        static-props (remove-empty (merge tag-props (select-keys (meta vec) [:ref :key])))
+        tag-override (shared/custom-elements tag)
         is-element? (= "createElement" tag-override)
         create-element? (or (some? tag-override)
                             is-element?
@@ -69,10 +86,8 @@
          (children-as-list (cond-> body props? next))
          (merge
           {:create-element? true
-           :id id
-           :class-string class-string
-           :prop-mode mode}
-          (select-keys (meta vec) [:ref :key]))])
+           :static-props static-props
+           :prop-mode mode})])
       [tag nil body {:form-meta (meta vec)}])))
 
 
@@ -102,41 +117,97 @@
 
 (declare emit literal->js)
 
-(defn literal->js
-  "Efficiently emit to literal JS form"
-  [x]
-  (cond
-    (nil? x) x
-    (keyword? x) (name x)
-    (string? x) x
-    (vector? x) (apply list 'cljs.core/array (mapv literal->js x))
-    (map? x) (when (seq x)
-               (assert (every? util/primitive? (keys x)))
-               `(~'js-obj ~@(->> x (apply concat) (map literal->js))))
-    :else x))
-
-(defn join-strings-compile [v]
-  (cond (string? v) v
-        (coll? v)
-        (let [v (interpose " " v)
-              v (->> (partition-by string? v)
-                     (mapcat (fn [v]
-                               (if (string? (first v))
-                                 [(-> (str/join v)
-                                      (str/replace #"\s+" " "))]
-                                 v))))]
-          (if (and (= 1 (count v)) (string? (first v)))
-            (first v)
-            (list* `str v)))
-        :else (do
-                (shared/warn-on-interpret v)
-                `(~'yawn.compiler/maybe-interpret-class ~v))))
+(defn merge-classes
+  "Returns vector of classes from list of strings, expressions or vectors (containing strings/expressions)"
+  ([c1 c2 & more] (reduce merge-classes (merge-classes c1 c2) more))
+  ([c1 c2]
+   (let [c1 (if (vector? c1) c1 [c1])]
+     (into []
+           (keep identity)
+           (if (vector? c2)
+             (into c1 c2)
+             (conj c1 c2))))))
 
 (comment
- (add-tap println)
- (= `(str ~'a " b " ~'c " " ~'d)
-    (join-strings-compile '[a "b   " c d]))
- (= "a b c d" (join-strings-compile ["a" "b" "c" "d"])))
+ (merge-classes nil "b")
+ (merge-classes "a" nil)
+ (merge-classes "a" "b")
+ (merge-classes ["a" "b"] "c")
+ (merge-classes ["a"] ["b"])
+ (merge-classes ["b"] 'c))
+
+(defn compile-classv [classv]
+  (if (string? classv)
+    (str/replace classv #"\s+" " ")
+    (let [out (->> classv
+                   (remove #(and (string? %) (str/blank? %)))
+                   (interpose " ")
+                   (partition-by string?)
+                   (mapcat (fn [v]
+                             (if (string? (first v))
+                               [(-> (str/join v)
+                                    (str/replace #"\s+" " "))]
+                               (map (fn [v] `(~'yawn.compiler/maybe-interpret-class ~v)) v)))))]
+      (if (= 1 (count out))
+        (first out)
+        `(str ~@out)))))
+
+(defn camel-case-keys-compile
+  "returns map with keys camel-cased"
+  [m]
+  (if (map? m)
+    (shared/camel-case-keys m)
+    `(shared/camel-case-keys ~m)))
+
+(defn format-style-prop->map [v]
+  (if (vector? v)
+    (mapv camel-case-keys-compile v)
+    (camel-case-keys-compile v)))
+
+(defn convert-props [props]
+  (reduce-kv
+   (fn [m k v]
+     (let [kname (name k)]
+       (case kname
+         "class"
+         (assoc m "className" (compile-classv v))
+         "for"
+         (assoc m "htmlFor" v)
+         "style"
+         (assoc m "style" (format-style-prop->map v))
+         (let [k (if (string? k)
+                   k
+                   (shared/camel-case kname))]
+           (assoc m k v)))))
+   {}
+   props))
+
+(comment
+ (compile '[:div.c1 {:class x}])
+
+ (compile-classv '["a" b " "])
+ (compile-classv '[c "a"])
+ (compile-classv '["a" "b" "c"]))
+
+(defn- merge-props
+  ([p1 p2 & more]
+   (reduce merge-props (merge-props p1 p2) more))
+  ([p1 p2]
+   (if p2
+     (reduce-kv (fn [out k v]
+                  (case k :style (update out k merge v)
+                          :class (update out k merge-classes v)
+                          (assoc out k v))) p1 p2)
+     p1)))
+
+(comment
+ (merge-props {:id 1 :class ["a" "b"]}
+              {:id 2 :class 'c}
+              {:id 3 :class "d"})
+
+ (merge-props {:id 1} nil)
+
+ (merge-props nil {:id 1}))
 
 (defn compile-vec
   "Returns an unevaluated form that returns a react element"
@@ -169,78 +240,59 @@
 (defn view-from-element
   ([el] (view-from-element el nil))
   ([original-el initial-props]
-   (let [[el id class-string] (if (or (keyword? original-el)
-                                      (string? original-el))
-                                (convert/parse-tag (name original-el))
-                                [original-el nil nil])
-         initial-props (-> (convert/convert-props initial-props)
-                           (cond-> id (assoc "id" id)
-                                   class-string (update "className" #(if %
-                                                                       (join-strings-compile [% class-string])
-                                                                       class-string))))]
+   (let [[el tag-props] (parse-tag original-el)
+         initial-props (convert-props (merge-props initial-props tag-props))]
      `(let [initial-props# ~(literal->js initial-props)]
         (fn [new-props# & children#]
           (let [new-props?# (map? new-props#)
                 props# (cond->> initial-props#
                                 new-props?#
-                                (~'yawn.convert/merge-js-props! (convert/convert-props new-props#)))
+                                (~'yawn.convert/merge-js-props! (convert-props new-props#)))
                 children# (cond->> children#
                                    (not new-props?#)
                                    (cons new-props#))]
             (~'yawn.convert/make-element ~el props# children# 0)))))))
 
+(def props->js (comp literal->js convert-props))
+
 (defn emit
   "Emits the final react js code"
   [[tag props children {:as form-options
                         :keys [create-element?
-                               id
-                               class-string
-                               key
-                               ref
+                               static-props
                                prop-mode
                                form-meta]}]]
-  (let [runtime-static-props (fn [form]
-                               ;; adds dynamic props to js-props object at runtime
-                               (if-let [ops (-> (for [[k v] {"id" id "key" key "ref" ref}
-                                                      :when v]
-                                                  `(~'applied-science.js-interop/!set ~k ~v))
-                                                (cond-> class-string
-                                                        (conj `(~'yawn.convert/update-className ~class-string)))
-                                                seq)]
-                                 `(-> ~form ~@ops)
-                                 form))]
-    (if create-element?
-      `(~'yawn.react/createElement
-        ~tag
-        ~(case prop-mode
-           ;; literal, we can add static props at compile-time
-           (:map :nil :no-props)
-           (as-> (or props {}) props*
-                 (dissoc props* :&)
-                 (into props* (filter val) {:id id :key key :ref ref})
-                 (convert/convert-props props*)
-                 (cond-> props*
-                         class-string (update "className" #(cond (nil? %) class-string
-                                                                 (string? %) (str class-string " " %)
-                                                                 :else `(~'clojure.core/str ~(str class-string " ") ~%))))
-                 (literal->js props*)
-                 (if (:& props)
-                   `(-> ~props*
-                        (~'applied-science.js-interop/extend!
-                         (~'yawn.convert/convert-props ~(:& props))))
-                   props*))
-           ;; dynamic clj, need to interpret & then add static props
-           :dynamic
-           (runtime-static-props
-            (when props
-              `(~'yawn.convert/convert-props ~props)))
-           ;; skip interpret, but add static props
-           :js-object
-           (runtime-static-props props))
-        ~@(mapv compile-or-interpret-child children))
-      ;; clj-element
-      `(~'yawn.infer/maybe-interpret ~(with-meta `(~tag ~@(mapv compile-hiccup-child children)) form-meta)))))
+  (if create-element?
+    `(~'yawn.react/createElement
+      ~tag
+      ~(case prop-mode
+         ;; no props, only use tag-props
+         (:nil :no-props)
+         (props->js static-props)
 
+         ;; literal props, merge and compile
+         :map
+         (do (assert (not (:& props)) "& deprecated, use v/props instead")
+             (props->js (merge-props static-props props)))
+
+         ;; runtime props, merge with compiled static-props at runtime
+         :dynamic
+         (cond->> `(~'yawn.convert/convert-props ~props)
+                  static-props
+                  (list 'yawn.convert/merge-js-props! (props->js static-props)))
+         ;; skip interpret, but add static props
+         :js-props
+         (cond->> props
+                  static-props
+                  (list 'yawn.convert/merge-js-props! (props->js static-props))))
+      ~@(mapv compile-or-interpret-child children))
+    ;; clj-element
+    `(~'yawn.infer/maybe-interpret ~(with-meta `(~tag ~@(mapv compile-hiccup-child children)) form-meta))))
+
+(comment
+ (compile '[:div.c1 {:class x}])
+ (convert-props (merge-props {:class "c1"}
+                             '{:class x})))
 (defn compile
   ([content] (compile nil content))
   ([env content]

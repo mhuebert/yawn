@@ -1,6 +1,6 @@
 (ns yawn.compiler-test
   (:refer-clojure :exclude [compile])
-  (:require #?(:clj [yawn.compiler :as compiler :refer [compile compile-props]])
+  (:require #?(:clj [yawn.compiler :as compiler :refer [compile]])
             #?(:clj [yawn.infer :as infer])
             [clojure.test :as t :refer [deftest is are]]
             [yawn.convert :as convert :refer [convert-props]]
@@ -32,12 +32,14 @@
      (deftest convert-tests
        (is
         (= (let [props {:a 1}]
-             (to-string (convert/x [:div props])))
+             (to-string (convert/x [:div props]))
+             (to-string (v/x [:div (v/props props)])))
            "<div a=\"1\"></div>")
         "Interpreter can handle dynamic props")
 
        (are [expr html]
          (= (to-string (convert/x expr))
+            (to-string (v/x expr))
             html)
 
          ;; element
@@ -66,10 +68,13 @@
          [:div (a-fn)]
          "<div><div></div></div>"
 
-         (let [props {:style {:font-size 12}
-                      :class "c"}]
+         (let [props {:class "c"}]
            [:div.a.b ^:props props])
-         "<div style=\"font-size:12px\" class=\"a b c\"></div>"
+         "<div class=\"a b c\"></div>"
+
+         (let [props {:style {:font-size 12}}]
+           [:div ^:props props])
+         "<div style=\"font-size:12px\"></div>"
 
          (let [c "c"]
            [:div.a {:class ["b" c]}])
@@ -78,14 +83,14 @@
          #js["div" nil (v/x #js["div"])]
          "<div><div></div></div>"
 
-         [:... [:div] [:div]]
-         "<div></div><div></div>"
+         [:... [:div.a] [:div]]
+         "<div class=\"a\"></div><div></div>"
 
          (do [:div])
          "<div></div>"
 
          (let [props {:style {:font-size 12}}]
-           [:div {:x 1 :& props}])
+           [:div (v/props {:x 1} props)])
          "<div x=\"1\" style=\"font-size:12px\"></div>"
 
 
@@ -134,19 +139,19 @@
          :=> '(yawn.react/createElement "span" (yawn.convert/convert-props a)))
 
      (-- "keys are camelCase'd"
-         (compile-props {:on-click ()})
+         (convert/convert-props {:on-click ()})
          :=> {"onClick" ()})
 
      (-- "class vector is joined at compile time"
-         (compile-props {:class ["b" "c"]})
+         (convert/convert-props {:class ["b" "c"]})
          :=> {"className" "b c"})
 
      (-- "class vector may include dynamic elements"
-         (compile-props '{:class ["b" c]})
+         (convert/convert-props '{:class ["b" c]})
          :=> '{"className" (clojure.core/str "b" " " c)})
 
      (-- "class may be dynamic - with runtime interpretation"
-         (compile-props '{:class x})
+         (convert/convert-props '{:class x})
          :=> '{"className" (yawn.compiler/maybe-interpret-class x)})
 
      (-- "classes from tag + props are joined"
@@ -157,20 +162,26 @@
          (compile '[:div.c1 {:class x}])
          :=> '(yawn.react/createElement
                "div"
-               (js-obj "className" (clojure.core/str "c1 " (yawn.compiler/maybe-interpret-class x))))
+               (js-obj
+                "className"
+                (clojure.core/str "c1 " (yawn.compiler/maybe-interpret-class x))))
+
          (compile '[:div.c1 {:class ["y" d]}])
          :=> '(yawn.react/createElement
                "div"
-               (js-obj "className" (clojure.core/str "c1 " (clojure.core/str "y" " " d)))))
+               (js-obj
+                "className"
+                (clojure.core/str "c1 y " (yawn.compiler/maybe-interpret-class d))))
+         )
 
      (-- "style map is also converted to camel-case"
-         (compile-props '{:style {:font-weight 600}})
+         (convert/convert-props '{:style {:font-weight 600}})
          :=> {"style" {"fontWeight" 600}}
-         (compile-props '{:style x})
+         (convert/convert-props '{:style x})
          :=> '{"style" (yawn.shared/camel-case-keys x)})
 
      (-- "multiple style maps may be passed (for RN)"
-         (compile-props '{:style [{:font-size 10} x]})
+         (convert/convert-props '{:style [{:font-size 10} x]})
          :=> '{"style" [{"fontSize" 10} (yawn.shared/camel-case-keys x)]})
 
      (-- "special cases of key renaming"
