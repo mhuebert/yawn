@@ -3,7 +3,7 @@
   (:require #?(:clj [yawn.compiler :as compiler :refer [compile]])
             #?(:clj [yawn.infer :as infer])
             [clojure.test :as t :refer [deftest is are]]
-            [yawn.convert :as convert :refer [convert-props]]
+            #?(:cljs [yawn.convert :as convert])
             [yawn.shared :refer [*throw-on-interpret*]]
             [yawn.view :as v]
             #?@(:cljs
@@ -139,19 +139,19 @@
          :=> '(yawn.react/createElement "span" (yawn.convert/convert-props a)))
 
      (-- "keys are camelCase'd"
-         (convert/convert-props {:on-click ()})
+         (compiler/convert-props {:on-click ()})
          :=> {"onClick" ()})
 
      (-- "class vector is joined at compile time"
-         (convert/convert-props {:class ["b" "c"]})
+         (compiler/convert-props {:class ["b" "c"]})
          :=> {"className" "b c"})
 
      (-- "class vector may include dynamic elements"
-         (convert/convert-props '{:class ["b" c]})
-         :=> '{"className" (clojure.core/str "b" " " c)})
+         (compiler/convert-props '{:class ["b" c]})
+         :=> '{"className" (clojure.core/str "b " (yawn.compiler/maybe-interpret-class c))})
 
      (-- "class may be dynamic - with runtime interpretation"
-         (convert/convert-props '{:class x})
+         (compiler/convert-props '{:class x})
          :=> '{"className" (yawn.compiler/maybe-interpret-class x)})
 
      (-- "classes from tag + props are joined"
@@ -175,36 +175,22 @@
          )
 
      (-- "style map is also converted to camel-case"
-         (convert/convert-props '{:style {:font-weight 600}})
+         (compiler/convert-props '{:style {:font-weight 600}})
          :=> {"style" {"fontWeight" 600}}
-         (convert/convert-props '{:style x})
+         (compiler/convert-props '{:style x})
          :=> '{"style" (yawn.shared/camel-case-keys x)})
 
      (-- "multiple style maps may be passed (for RN)"
-         (convert/convert-props '{:style [{:font-size 10} x]})
+         (compiler/convert-props '{:style [{:font-size 10} x]})
          :=> '{"style" [{"fontSize" 10} (yawn.shared/camel-case-keys x)]})
-
-     (-- "special cases of key renaming"
-         (->> (compile [:div {:for 1 ;; special case
-                              :class 1 ;; special case
-                              :kw-key 1 ;; camelCase
-                              :aria-key 1 ;; not camelCase (aria-*)
-                              :data-key 1 ;; not camelCase (data-*)
-                              "string-key" 1 ;; not camelCase (string)
-                              }])
-              last
-              (filter string?)
-              set)
-         :=> #{"htmlFor"
-               "className"
-               "kwKey"
-               "aria-key"
-               "data-key"
-               "string-key"})
 
      (-- "a keyword tag is assumed to map to a DOM element and is compiled to createElement"
          (compile [:div])
          :=> '(yawn.react/createElement "div" nil))
+
+
+
+
 
      (-- "a symbol tag is assumed to be a regular function that returns a React element.
        this is compiled to a regular function call - with no special handling of \"props\""
@@ -218,8 +204,8 @@
 
      ;; to invoke a symbol with createElement (instead of calling it as a function),
      ;; add a ^js hint or use `:>` as the tag
-     (-- "invoke a symbol with createElement using ^js metadata"
-         (compile '[^js my-fn])
+     (-- "invoke a symbol with createElement using :el"
+         (compile '[:el my-fn])
          :=> '(yawn.react/createElement my-fn nil))
 
 
@@ -300,6 +286,42 @@
      (-- "ignore inner forms of unknown operators"
          (compile '(hello [:div]))
          '(yawn.infer/maybe-interpret (hello [:div])))
+
+     (-- "Interpreted styles"
+         (compiler/literal->js (compiler/convert-props '{a 1}))
+         '(js-obj (yawn.shared/camel-case (clojure.core/name a)) 1))
+
+     (-- "Interpreted styles"
+         (compiler/literal->js (compiler/convert-props '{:style a}))
+         '(js-obj "style" (yawn.shared/camel-case-keys a)))
+
+     (-- "Interpreted style expr"
+         (compiler/convert-props '{:style (case type ... ...)})
+         '{"style" (yawn.shared/camel-case-keys (case type ... ...))})
+
+     (-- "merge props with dynamic styles"
+         (-> (compiler/merge-props '{:style a} '{:style b})
+             compiler/convert-props)
+         '{"style" (yawn.shared/camel-case-keys (clojure.core/merge a b))})
+
+     (-- "special cases of key renaming"
+         (->> (compile [:div {:for 1 ;; special case
+                              :class 1 ;; special case
+                              :kw-key 1 ;; camelCase
+                              :aria-key 1 ;; not camelCase (aria-*)
+                              :data-key 1 ;; not camelCase (data-*)
+                              "string-key" 1 ;; not camelCase (string)
+                              }])
+              last
+              (filter string?)
+              set)
+         #{"htmlFor"
+           "className"
+           "kwKey"
+           "aria-key"
+           "data-key"
+           "string-key"})
+
 
      (comment
       ;; interpret

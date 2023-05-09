@@ -3,11 +3,11 @@
   (:require #?@(:cljs [["react" :as react]
                        ["react-dom" :refer [createPortal]]
                        ["use-sync-external-store/shim" :refer [useSyncExternalStore]]])
+            [yawn.convert #?(:cljs :as :clj :as-alias) convert]
             [clojure.string :as str]
             [clojure.walk :as walk]
             [applied-science.js-interop :as j]
             [yawn.compiler :as compiler]
-            [yawn.convert :as convert]
             [yawn.util :as u])
   #?(:cljs (:require-macros yawn.view)))
 
@@ -130,9 +130,11 @@
 
 #?(:clj
    (defmacro classes [v]
-     (compiler/join-strings-compile v)))
+     (compiler/compile-classv v)))
 
-(defn classes [v] (convert/join-strings " " v))
+#?(:cljs
+   (defn classes [v]
+     (convert/join-strings " " v)))
 
 #?(:cljs
    (defn portal [^js el react-el]
@@ -164,7 +166,9 @@
    (defmacro props [& props]
      (let [convert (fn [props]
                      (if (map? props)
-                       (-> props convert/convert-props compiler/literal->js)
+                       (-> props
+                           compiler/convert-props
+                           compiler/literal->js)
                        `(convert/convert-props ~props)))
            props (map convert props)]
        (with-meta (reduce (fn [p1 p2]

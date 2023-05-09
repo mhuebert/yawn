@@ -42,7 +42,6 @@
     (string? x) x
     (vector? x) (apply list 'cljs.core/array (mapv literal->js x))
     (map? x) (when (seq x)
-               (assert (every? util/primitive? (keys x)))
                `(~'js-obj ~@(->> x (apply concat) (map literal->js))))
     :else x))
 
@@ -137,20 +136,21 @@
  (merge-classes ["b"] 'c))
 
 (defn compile-classv [classv]
-  (if (string? classv)
-    (str/replace classv #"\s+" " ")
-    (let [out (->> classv
-                   (remove #(and (string? %) (str/blank? %)))
-                   (interpose " ")
-                   (partition-by string?)
-                   (mapcat (fn [v]
-                             (if (string? (first v))
-                               [(-> (str/join v)
-                                    (str/replace #"\s+" " "))]
-                               (map (fn [v] `(~'yawn.compiler/maybe-interpret-class ~v)) v)))))]
-      (if (= 1 (count out))
-        (first out)
-        `(str ~@out)))))
+  (cond (string? classv) (str/replace classv #"\s+" " ")
+        (symbol? classv) `(~'yawn.compiler/maybe-interpret-class ~classv)
+        :else
+        (let [out (->> classv
+                       (remove #(and (string? %) (str/blank? %)))
+                       (interpose " ")
+                       (partition-by string?)
+                       (mapcat (fn [v]
+                                 (if (string? (first v))
+                                   [(-> (str/join v)
+                                        (str/replace #"\s+" " "))]
+                                   (map (fn [v] `(~'yawn.compiler/maybe-interpret-class ~v)) v)))))]
+          (if (= 1 (count out))
+            (first out)
+            `(str ~@out)))))
 
 (defn camel-case-keys-compile
   "returns map with keys camel-cased"
@@ -167,18 +167,20 @@
 (defn convert-props [props]
   (reduce-kv
    (fn [m k v]
-     (let [kname (name k)]
-       (case kname
-         "class"
-         (assoc m "className" (compile-classv v))
-         "for"
-         (assoc m "htmlFor" v)
-         "style"
-         (assoc m "style" (format-style-prop->map v))
-         (let [k (if (string? k)
-                   k
-                   (shared/camel-case kname))]
-           (assoc m k v)))))
+     (if (symbol? k)
+       (assoc m `(shared/camel-case (name ~k)) v)
+       (let [kname (name k)]
+         (case kname
+           "class"
+           (assoc m "className" (compile-classv v))
+           "for"
+           (assoc m "htmlFor" v)
+           "style"
+           (assoc m "style" (format-style-prop->map v))
+           (let [k (if (string? k)
+                     k
+                     (shared/camel-case kname))]
+             (assoc m k v))))))
    {}
    props))
 
@@ -189,13 +191,18 @@
  (compile-classv '[c "a"])
  (compile-classv '["a" "b" "c"]))
 
-(defn- merge-props
+(defn merge-styles [m1 m2]
+  (if (and (map? m1) (map? m2))
+    (merge m1 m2)
+    `(merge ~m1 ~m2)))
+
+(defn merge-props
   ([p1 p2 & more]
    (reduce merge-props (merge-props p1 p2) more))
   ([p1 p2]
    (if p2
      (reduce-kv (fn [out k v]
-                  (case k :style (update out k merge v)
+                  (case k :style (update out k merge-styles v)
                           :class (update out k merge-classes v)
                           (assoc out k v))) p1 p2)
      p1)))

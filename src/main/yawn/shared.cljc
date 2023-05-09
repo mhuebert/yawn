@@ -58,7 +58,7 @@
   (util/memo-by-string
    (fn [tag-name]
      (if (= tag-name "...")
-       #js[tag-name nil nil]
+       #?(:cljs #js[tag-name nil nil] :clj [tag-name nil nil])
        (let [pattern #"([^#.]+)?(?:#([^.]+))?(?:\.(.*))?"]
          #?(:cljs (-> (.exec pattern tag-name)
                       (.slice 1 4)

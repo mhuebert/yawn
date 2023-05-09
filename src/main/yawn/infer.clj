@@ -36,3 +36,5 @@
   (or (skipped expr (infer-type expr &env))
       (do (yawn.shared/warn-on-interpret expr)
           `(~'yawn.convert/x ~expr))))
+
+
