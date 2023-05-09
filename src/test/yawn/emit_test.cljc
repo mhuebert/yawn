@@ -1,5 +1,6 @@
 (ns yawn.emit-test
   (:require [yawn.compiler :as c]
+            [yawn.convert #?(:cljs :as :clj :as-alias) convert]
             #?(:cljs [yawn.react]))
   #?(:cljs (:require-macros [yawn.emit-test :refer [emit]])))
 
@@ -23,4 +24,8 @@
      (emit 5 (yawn.react/createElement "div"))
 
      ))
+
+(comment
+ (convert/x [:div {:on-click #()}])
+ )
 

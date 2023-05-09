@@ -188,10 +188,6 @@
          (compile [:div])
          :=> '(yawn.react/createElement "div" nil))
 
-
-
-
-
      (-- "a symbol tag is assumed to be a regular function that returns a React element.
        this is compiled to a regular function call - with no special handling of \"props\""
          (compile '[my-fn 1 2 3])

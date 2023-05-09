@@ -137,8 +137,7 @@
 
 (defn compile-classv [classv]
   (cond (string? classv) (str/replace classv #"\s+" " ")
-        (symbol? classv) `(~'yawn.compiler/maybe-interpret-class ~classv)
-        :else
+        (vector? classv)
         (let [out (->> classv
                        (remove #(and (string? %) (str/blank? %)))
                        (interpose " ")
@@ -150,7 +149,8 @@
                                    (map (fn [v] `(~'yawn.compiler/maybe-interpret-class ~v)) v)))))]
           (if (= 1 (count out))
             (first out)
-            `(str ~@out)))))
+            `(str ~@out)))
+        :else  `(~'yawn.compiler/maybe-interpret-class ~classv)))
 
 (defn camel-case-keys-compile
   "returns map with keys camel-cased"
@@ -186,7 +186,7 @@
 
 (comment
  (compile '[:div.c1 {:class x}])
-
+ (compile-classv '(when foo "x"))
  (compile-classv '["a" b " "])
  (compile-classv '[c "a"])
  (compile-classv '["a" "b" "c"]))
