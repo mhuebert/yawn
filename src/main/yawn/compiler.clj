@@ -223,7 +223,6 @@
 (defn compile-or-interpret-child
   "Compiles hiccup forms & wraps ambiguous forms for runtime interpretation"
   [form]
-  (tap> [:compile-or-interpret-child (compile-mode form) form])
   (if (map? form)
     (throw (ex-info "a map is an invalid child" {:form form}))
     (case (compile-mode form)
