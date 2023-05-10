@@ -183,7 +183,7 @@
                        (-> props
                            compiler/convert-props
                            compiler/literal->js)
-                       `(convert/convert-props ~props)))
+                       `(~'yawn.convert/convert-props ~props)))
            props (map convert props)]
        (with-meta (reduce (fn [p1 p2]
                             `(~'yawn.convert/merge-js-props! ~p1 ~p2))

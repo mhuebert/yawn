@@ -6,12 +6,12 @@
   weavejester/hiccup -> r0man/sablono -> Hicada."
   (:refer-clojure :exclude [compile])
   (:require
-   [clojure.string :as str]
-   [yawn.wrap-return :refer [wrap-return]]
-   [yawn.infer :as infer]
-   [yawn.util :as util]
-   [yawn.shared :as shared]
-   yawn.react))
+    [clojure.string :as str]
+    [yawn.wrap-return :refer [wrap-return]]
+    [yawn.infer :as infer]
+    [yawn.util :as util]
+    [yawn.shared :as shared]
+    yawn.react))
 
 (def ^:dynamic *env* nil)
 
@@ -84,17 +84,17 @@
          (when props? props)
          (children-as-list (cond-> body props? next))
          (merge
-          {:create-element? true
-           :static-props static-props
-           :prop-mode mode})])
+           {:create-element? true
+            :static-props    static-props
+            :prop-mode       mode})])
       [tag nil body {:form-meta (meta vec)}])))
 
 
 (comment
- (analyze-vec [:div#foo 'a])
- (analyze-vec [:div.a#foo])
- (analyze-vec [:h1.b {:className "a"}])
- (analyze-vec '[:div (for [x xs] [:span 1])]))
+  (analyze-vec [:div#foo 'a])
+  (analyze-vec [:div.a#foo])
+  (analyze-vec [:h1.b {:className "a"}])
+  (analyze-vec '[:div (for [x xs] [:span 1])]))
 
 (defn compile-mode
   [form]
@@ -128,12 +128,12 @@
              (conj c1 c2))))))
 
 (comment
- (merge-classes nil "b")
- (merge-classes "a" nil)
- (merge-classes "a" "b")
- (merge-classes ["a" "b"] "c")
- (merge-classes ["a"] ["b"])
- (merge-classes ["b"] 'c))
+  (merge-classes nil "b")
+  (merge-classes "a" nil)
+  (merge-classes "a" "b")
+  (merge-classes ["a" "b"] "c")
+  (merge-classes ["a"] ["b"])
+  (merge-classes ["b"] 'c))
 
 (defn compile-classv [classv]
   (cond (string? classv) (str/replace classv #"\s+" " ")
@@ -150,7 +150,7 @@
           (if (= 1 (count out))
             (first out)
             `(str ~@out)))
-        :else  `(~'yawn.compiler/maybe-interpret-class ~classv)))
+        :else `(~'yawn.compiler/maybe-interpret-class ~classv)))
 
 (defn camel-case-keys-compile
   "returns map with keys camel-cased"
@@ -166,30 +166,30 @@
 
 (defn convert-props [props]
   (reduce-kv
-   (fn [m k v]
-     (if (symbol? k)
-       (assoc m `(shared/camel-case (name ~k)) v)
-       (let [kname (name k)]
-         (case kname
-           "class"
-           (assoc m "className" (compile-classv v))
-           "for"
-           (assoc m "htmlFor" v)
-           "style"
-           (assoc m "style" (format-style-prop->map v))
-           (let [k (if (string? k)
-                     k
-                     (shared/camel-case kname))]
-             (assoc m k v))))))
-   {}
-   props))
+    (fn [m k v]
+      (if (symbol? k)
+        (assoc m `(shared/camel-case (name ~k)) v)
+        (let [kname (name k)]
+          (case kname
+            "class"
+            (assoc m "className" (compile-classv v))
+            "for"
+            (assoc m "htmlFor" v)
+            "style"
+            (assoc m "style" (format-style-prop->map v))
+            (let [k (if (string? k)
+                      k
+                      (shared/camel-case kname))]
+              (assoc m k v))))))
+    {}
+    props))
 
 (comment
- (compile '[:div.c1 {:class x}])
- (compile-classv '(when foo "x"))
- (compile-classv '["a" b " "])
- (compile-classv '[c "a"])
- (compile-classv '["a" "b" "c"]))
+  (compile '[:div.c1 {:class x}])
+  (compile-classv '(when foo "x"))
+  (compile-classv '["a" b " "])
+  (compile-classv '[c "a"])
+  (compile-classv '["a" "b" "c"]))
 
 (defn merge-styles [m1 m2]
   (if (and (map? m1) (map? m2))
@@ -208,13 +208,13 @@
      p1)))
 
 (comment
- (merge-props {:id 1 :class ["a" "b"]}
-              {:id 2 :class 'c}
-              {:id 3 :class "d"})
+  (merge-props {:id 1 :class ["a" "b"]}
+               {:id 2 :class 'c}
+               {:id 3 :class "d"})
 
- (merge-props {:id 1} nil)
+  (merge-props {:id 1} nil)
 
- (merge-props nil {:id 1}))
+  (merge-props nil {:id 1}))
 
 (defn compile-vec
   "Returns an unevaluated form that returns a react element"
@@ -223,6 +223,7 @@
 (defn compile-or-interpret-child
   "Compiles hiccup forms & wraps ambiguous forms for runtime interpretation"
   [form]
+  (tap> [:compile-or-interpret-child (compile-mode form) form])
   (if (map? form)
     (throw (ex-info "a map is an invalid child" {:form form}))
     (case (compile-mode form)
@@ -251,10 +252,10 @@
          initial-props (convert-props (merge-props initial-props tag-props))]
      `(let [initial-props# ~(literal->js initial-props)]
         (fn [new-props# & children#]
-          (let [new-props?# (map? new-props#)
+          (let [new-props?# (or (~'cljs.core/object? new-props#) (map? new-props#))
                 props# (cond->> initial-props#
                                 new-props?#
-                                (~'yawn.convert/merge-js-props! (convert-props new-props#)))
+                                (~'yawn.view/props new-props#))
                 children# (cond->> children#
                                    (not new-props?#)
                                    (cons new-props#))]
@@ -262,44 +263,54 @@
 
 (def props->js (comp literal->js convert-props))
 
+(defmacro dynamic-el [el]
+  (if (= 'yawn.view/el (infer/infer-type el &env))
+    el
+    `(let [el# ~el]
+       (if (keyword? el#)
+         (~'yawn.convert/from-kw el#)
+         el#))))
+
 (defn emit
   "Emits the final react js code"
-  [[tag props children {:as form-options
+  [[tag props children {:as   form-options
                         :keys [create-element?
                                static-props
                                prop-mode
                                form-meta]}]]
   (if create-element?
     `(~'yawn.react/createElement
-      ~tag
-      ~(case prop-mode
-         ;; no props, only use tag-props
-         (:nil :no-props)
-         (props->js static-props)
+       ~tag
+       ~(case prop-mode
+          ;; no props, only use tag-props
+          (:nil :no-props)
+          (props->js static-props)
 
-         ;; literal props, merge and compile
-         :map
-         (do (assert (not (:& props)) "& deprecated, use v/props instead")
-             (props->js (merge-props static-props props)))
+          ;; literal props, merge and compile
+          :map
+          (do (assert (not (:& props)) "& deprecated, use v/props instead")
+              (props->js (merge-props static-props props)))
 
-         ;; runtime props, merge with compiled static-props at runtime
-         :dynamic
-         (cond->> `(~'yawn.convert/convert-props ~props)
-                  static-props
-                  (list 'yawn.convert/merge-js-props! (props->js static-props)))
-         ;; skip interpret, but add static props
-         :js-props
-         (cond->> props
-                  static-props
-                  (list 'yawn.convert/merge-js-props! (props->js static-props))))
-      ~@(mapv compile-or-interpret-child children))
+          ;; runtime props, merge with compiled static-props at runtime
+          :dynamic
+          (cond->> `(~'yawn.convert/convert-props ~props)
+                   static-props
+                   (list 'yawn.convert/merge-js-props! (props->js static-props)))
+          ;; skip interpret, but add static props
+          :js-props
+          (cond->> props
+                   static-props
+                   (list 'yawn.convert/merge-js-props! (props->js static-props))))
+       ~@(mapv compile-or-interpret-child children))
     ;; clj-element
-    `(~'yawn.infer/maybe-interpret ~(with-meta `(~tag ~@(mapv compile-hiccup-child children)) form-meta))))
+    `(~'yawn.infer/maybe-interpret ~(with-meta `((dynamic-el ~tag)
+                                                 ~@(mapv compile-hiccup-child children))
+                                               form-meta))))
 
 (comment
- (compile '[:div.c1 {:class x}])
- (convert-props (merge-props {:class "c1"}
-                             '{:class x})))
+  (compile '[:div.c1 {:class x}])
+  (convert-props (merge-props {:class "c1"}
+                              '{:class x})))
 (defn compile
   ([content] (compile nil content))
   ([env content]

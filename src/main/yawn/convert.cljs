@@ -84,14 +84,16 @@
   (not (undefined? x)))
 
 (defn get-props [form i]
-  (let [result (-nth form i js/undefined)]
-    (if (undefined? result)
-      result
-      (if (or (and (object? result)
-                   (not (react/valid-element? result)))
-              (map? result))
+  (if (nil? form)
+    js/undefined
+    (let [result (-nth form i js/undefined)]
+      (if (undefined? result)
         result
-        js/undefined))))
+        (if (or (and (object? result)
+                     (not (react/valid-element? result)))
+                (map? result))
+          result
+          js/undefined)))))
 
 (defn add-static-props [props-obj id class-string]
   (cond-> props-obj
@@ -123,25 +125,29 @@
                (.push out (x (nth form i)))
                (recur (inc i))))))))))
 
+(defn from-kw [kw]
+  (j/let [^js [tag id class-name] (shared/parse-tag (name kw))
+          tag (or (shared/custom-elements tag) tag)
+          create-element? (identical? tag "createElement")]
+    (fn [& args]
+      (let [element (if create-element? (-nth args 0) tag)
+            prop-position (if create-element? 1 0)
+            props (get-props args prop-position)
+            props? (defined? props)
+            props (-> props
+                      (cond-> props? convert-props)
+                      (add-static-props id class-name))
+            children-start (cond-> prop-position
+                                   props? inc)]
+        (make-element element
+                      props
+                      args
+                      children-start)))))
+
 (defn interpret-vec [form]
   (util/if-defined [form-0 (-nth form 0 js/undefined)]
     (if (keyword? form-0)
-      (j/let [^js [tag id class-name] (shared/parse-tag (name form-0))
-              tag (or (shared/custom-elements tag) tag)
-              create-element? (identical? tag "createElement")
-              element (if create-element? (-nth form 1) tag)
-              prop-position (if create-element? 2 1)
-              props (get-props form prop-position)
-              props? (defined? props)
-              props (-> props
-                        (cond-> props? convert-props)
-                        (add-static-props id class-name))
-              children-start (cond-> prop-position
-                                     props? inc)]
-        (make-element element
-                      props
-                      form
-                      children-start))
+      (apply (from-kw form-0) (rest form))
       (x (apply form-0 (rest form))))
     form))
 
