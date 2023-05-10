@@ -150,17 +150,31 @@
   (str (as-str c1) " " (as-str c2)))
 
 #?(:cljs
-   (defn props
-     ([p1 p2 & more]
-      ^object
-      (reduce props (props p1 p2) more))
-     ([p1 p2]
-      ^object
-      (cond-> (convert/convert-props p1)
-              p2
-              (convert/merge-js-props! (convert/convert-props p2))))
-     ([p]
-      ^object (convert/convert-props p))))
+   (do
+     (defn props
+       "Merges and converts props. Returns javascript object."
+       ([p1 p2 & more]
+        ^object
+        (reduce props (props p1 p2) more))
+       ([p1 p2]
+        ^object
+        (cond-> (convert/convert-props p1)
+                p2
+                (convert/merge-js-props! (convert/convert-props p2))))
+       ([p]
+        ^object (convert/convert-props p)))
+
+     (defn merge-props
+       "Merges props. Returns map."
+       ([p1 p2 & more]
+        (reduce merge-props (merge-props p1 p2) more))
+       ([p1 p2]
+        (if p2
+          (reduce-kv (fn [out k v]
+                       (case k :style (update out k merge v)
+                               :class (update out k convert/merge-clj-classes v)
+                               (assoc out k v))) p1 p2)
+          p1)))))
 
 #?(:clj
    (defmacro props [& props]

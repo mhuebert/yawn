@@ -59,6 +59,12 @@
      #js{}
      props)))
 
+(defn merge-clj-classes
+  [c1 c2]
+  (str (cond->> c1 (vector? c1) (str/join " "))
+       " "
+       (cond->> c2 (vector? c2) (str/join " "))))
+
 (defn merge-js-props!
   "Copies properties from p2 to p1 (overwriting), merges `className` and `style`"
   [p1 p2]
