@@ -130,7 +130,7 @@
           tag (or (shared/custom-elements tag) tag)
           create-element? (identical? tag "createElement")]
     (fn [& args]
-      (let [element (if create-element? (-nth args 0) tag)
+      (let [element (if create-element? (nth args 0) tag)
             prop-position (if create-element? 1 0)
             props (get-props args prop-position)
             props? (defined? props)
@@ -145,7 +145,7 @@
                       children-start)))))
 
 (defn interpret-vec [form]
-  (util/if-defined [form-0 (-nth form 0 js/undefined)]
+  (util/if-defined [form-0 (nth form 0 js/undefined)]
     (if (keyword? form-0)
       (apply (from-kw form-0) (rest form))
       (x (apply form-0 (rest form))))
