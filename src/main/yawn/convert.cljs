@@ -86,7 +86,7 @@
 (defn get-props [form i]
   (if (nil? form)
     js/undefined
-    (let [result (-nth form i js/undefined)]
+    (let [result (nth form i js/undefined)]
       (if (undefined? result)
         result
         (if (or (and (object? result)
@@ -104,7 +104,7 @@
   "Returns a React element. `tag` may be a string or a React component (a class or a function).
    Children will be read from `form` beginning at index `start`."
   ([element-type form ^number prop-position]
-   (let [props (-nth form prop-position js/undefined)
+   (let [props (nth form prop-position js/undefined)
          props? (not (identical? js/undefined props))]
      (make-element element-type
                    (when props? (convert-props props))
