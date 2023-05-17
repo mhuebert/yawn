@@ -85,8 +85,8 @@
          (children-as-list (cond-> body props? next))
          (merge
            {:create-element? true
-            :static-props    static-props
-            :prop-mode       mode})])
+            :static-props static-props
+            :prop-mode mode})])
       [tag nil body {:form-meta (meta vec)}])))
 
 
@@ -244,35 +244,36 @@
         :interpret `(~'yawn.convert/x ~form)
         form)))
 
-(defn view-from-element
-  ([el] (view-from-element el nil))
-  ([original-el initial-props]
-   (let [[el tag-props] (parse-tag original-el)
-         initial-props (convert-props (merge-props initial-props tag-props))]
-     `(let [initial-props# ~(literal->js initial-props)]
-        (fn [new-props# & children#]
-          (let [new-props?# (or (~'cljs.core/object? new-props#) (map? new-props#))
-                props# (cond->> initial-props#
-                                new-props?#
-                                (~'yawn.view/props new-props#))
-                children# (cond->> children#
-                                   (not new-props?#)
-                                   (cons new-props#))]
-            (~'yawn.convert/make-element ~el props# children# 0)))))))
-
 (def props->js (comp literal->js convert-props))
+
+(defn from-element*
+  ([kw]
+   (let [[element tag-props] (parse-tag kw)
+         element (or (shared/custom-elements element) element)]
+     `(~'yawn.convert/partial-constructor ~element ~(props->js tag-props))))
+  ([kw props-or-el]
+   (let [[element tag-props] (parse-tag kw)
+         element (or (shared/custom-elements element) element)]
+     (if (= "createElement" element)
+       `(~'yawn.convert/partial-constructor ~props-or-el ~(props->js tag-props))
+       `(~'yawn.convert/partial-constructor ~element ~(props->js (merge-props tag-props props-or-el))))))
+  ([kw el props]
+   (let [[element tag-props] (parse-tag kw)
+         element (or (shared/custom-elements element) element)]
+     (assert (= "createElement" element))
+     `(~'yawn.convert/partial-constructor ~el ~(props->js (merge-props tag-props props))))))
 
 (defmacro dynamic-el [el]
   (if (= 'yawn.view/el (infer/infer-type el &env))
     el
     `(let [el# ~el]
        (if (keyword? el#)
-         (~'yawn.convert/from-kw el#)
+         (~'yawn.convert/from-element el#)
          el#))))
 
 (defn emit
   "Emits the final react js code"
-  [[tag props children {:as   form-options
+  [[tag props children {:as form-options
                         :keys [create-element?
                                static-props
                                prop-mode

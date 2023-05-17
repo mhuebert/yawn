@@ -19,10 +19,10 @@
 (defmacro <> [form] (compiler/compile &env form))
 
 (defmacro from-element
-  "Creates a view function from an element like :div#id.class or package/ElementName.
-   If props are supplies, they will be merged with props supplied at callsite."
-  ([kw] (compiler/view-from-element kw))
-  ([kw props] (compiler/view-from-element kw props)))
+  "Creates a view function from an element like :div#id.class or package/ElementName."
+  ([kw] (compiler/from-element* kw))
+  ([kw props-or-el] (compiler/from-element* kw props-or-el))
+  ([kw el props] (compiler/from-element* kw el props)))
 
 (defn parse-args [args & preds]
   (loop [args args

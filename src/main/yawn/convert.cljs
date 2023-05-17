@@ -112,7 +112,7 @@
                    (cond-> prop-position props? inc))))
   ([element-type props-obj form children-start]
    (let [form-count (count form)]
-     (case (- form-count children-start) ;; fast cases for small numbers of children
+     (case (- form-count children-start)                    ;; fast cases for small numbers of children
        0 (.call react/createElement nil element-type props-obj)
        1 (.call react/createElement nil element-type props-obj (x (nth form children-start)))
        2 (.call react/createElement nil element-type props-obj (x (nth form children-start)) (x (nth form (+ children-start 1))))
@@ -125,29 +125,55 @@
                (.push out (x (nth form i)))
                (recur (inc i))))))))))
 
-(defn from-kw [kw]
-  (j/let [^js [tag id class-name] (shared/parse-tag (name kw))
-          tag (or (shared/custom-elements tag) tag)
-          create-element? (identical? tag "createElement")]
-    (fn [& args]
-      (let [element (if create-element? (nth args 0) tag)
-            prop-position (if create-element? 1 0)
-            props (get-props args prop-position)
-            props? (defined? props)
-            props (-> props
-                      (cond-> props? convert-props)
-                      (add-static-props id class-name))
-            children-start (cond-> prop-position
-                                   props? inc)]
-        (make-element element
-                      props
-                      args
-                      children-start)))))
+(defn partial-constructor [element initial-js-props]
+  (fn [& args]
+    (let [new-props (get-props args 0)
+          new-props? (defined? new-props)
+          props (cond-> initial-js-props
+                        new-props?
+                        (merge-js-props! (convert-props new-props)))]
+      (make-element element
+                    props
+                    args
+                    (if new-props? 1 0)))))
+
+(defn static-props-obj
+  [id class-name]
+  (cond-> #js{}
+          id (j/!set :id id)
+          class-name (j/!set :className class-name)))
+
+(defn parse-element [kw-or-el]
+  (if (keyword? kw-or-el)
+    (shared/parse-tag (name kw-or-el))
+    #js[kw-or-el]))
+
+(defn from-element
+  ([kw]
+   (j/let [^js [tag id class-name] (parse-element kw)]
+     (partial-constructor (or (shared/custom-elements tag) tag)
+                          (static-props-obj id class-name))))
+  ([kw props-or-el]
+   (j/let [^js [tag id class-name] (parse-element kw)
+           element (or (shared/custom-elements tag) tag)]
+     (if (= "createElement" element)
+       (partial-constructor props-or-el (static-props-obj id class-name))
+       (partial-constructor element (merge-js-props! (static-props-obj id class-name) (convert-props props-or-el))))))
+  ([kw element props]
+   (j/let [^js [_ id class-name] (parse-element kw)]
+     (partial-constructor element (merge-js-props! (static-props-obj id class-name) (convert-props props))))))
+
+(comment
+ (from-element :el js/What {})
+ (from-element :div.x.y {})
+ (from-element :el js/What {})
+
+ )
 
 (defn interpret-vec [form]
   (util/if-defined [form-0 (nth form 0 js/undefined)]
     (if (keyword? form-0)
-      (apply (from-kw form-0) (rest form))
+      (apply (from-element form-0) (rest form))
       (x (apply form-0 (rest form))))
     form))
 
