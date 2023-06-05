@@ -66,7 +66,8 @@
 (defn use-ref
   "React hook: useRef. Can also be used like an atom."
   ([] (use-ref nil))
-  ([init] (react/useCallback (Ref. init) #js[])))
+  ([init] (react/useCallback (Ref. init) #js[]))
+  ([init deps] (react/useCallback (Ref. init) (as-array deps))))
 
 (defn use-sync-external-store [subscribe get-snapshot]
   (useSyncExternalStore subscribe get-snapshot))
