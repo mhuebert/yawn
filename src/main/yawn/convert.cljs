@@ -127,15 +127,18 @@
 
 (defn partial-constructor [element initial-js-props]
   (fn [& args]
-    (let [new-props (get-props args 0)
+    (let [element? (identical? "createElement" element)
+          props-i (if element? 1 0)
+          new-props (get-props args props-i)
           new-props? (defined? new-props)
+          children-i (if new-props? (inc props-i) props-i)
           props (cond-> initial-js-props
                         new-props?
                         (merge-js-props! (convert-props new-props)))]
-      (make-element element
+      (make-element (if element? (first args) element)
                     props
                     args
-                    (if new-props? 1 0)))))
+                    children-i))))
 
 (defn static-props-obj
   [id class-name]
@@ -164,7 +167,7 @@
      (partial-constructor element (merge-js-props! (static-props-obj id class-name) (convert-props props))))))
 
 (comment
- (from-element :el js/What {})
+ (from-element :el 'js/What {:class "foo"})
  (from-element :div.x.y {})
  (from-element :el js/What {})
 
