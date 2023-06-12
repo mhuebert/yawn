@@ -132,7 +132,7 @@
           new-props (get-props args props-i)
           new-props? (defined? new-props)
           children-i (if new-props? (inc props-i) props-i)
-          props (cond-> initial-js-props
+          props (cond-> (j/extend! #js{} initial-js-props)
                         new-props?
                         (merge-js-props! (convert-props new-props)))]
       (make-element (if element? (first args) element)
