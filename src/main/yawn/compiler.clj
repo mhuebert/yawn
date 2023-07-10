@@ -34,7 +34,13 @@
   (or (when (map? props) :map)
       (when (or (seq? props) (symbol? props))
         (let [props-meta (meta props)
-              tag (or (:tag props-meta) (some->> *env* (infer/infer-type props)))]
+              tag (or (:tag props-meta) (some->> *env* (infer/infer-type props)))
+              tag (if (set? tag)
+                    (let [tag (disj tag 'clj-nil)]
+                      (if (= 1 (count tag))
+                        (first tag)
+                        tag))
+                    tag)]
           (cond
             ;; [:div ^:props x]
             (:props props-meta) :to-convert
@@ -45,6 +51,8 @@
             ;; [:div ..child]
             (#{'cljs.core/IVector
                'yawn.view/el
+               'string
+               'number
                'clj-nil} tag) :none
             :else :maybe-props)))
       :none))
@@ -219,7 +227,7 @@
             mode (props-mode props)
             props? (not= mode :none)
             props-expr (case mode
-                         :none (some-> static-props props->js)
+                         :none (props->js static-props)
                          :map (do (assert (not (:& props)) "& deprecated, use v/props instead")
                                   (props->js (merge-props static-props props)))
                          :compiled (if static-props
@@ -230,7 +238,7 @@
                                           ~(props->js static-props)
                                           (~'yawn.convert/convert-props ~props))
                                        `(~'yawn.convert/convert-props ~props))
-                         :maybe-props (some-> static-props props->js))]
+                         :maybe-props (props->js static-props))]
         [tag
          props-expr
          (when (= mode :maybe-props) props)
@@ -307,15 +315,14 @@
   (if create-element?
     (if maybe-props
       `(let [maybe-props# ~maybe-props
-             props-is-child?# (or (vector? maybe-props#)
-                                  (~'yawn.react/valid-element? maybe-props#))
+             is-props?# (or (map? maybe-props#)
+                            (and (~'cljs.core/object? maybe-props#)
+                                 (not (~'cljs.core/unchecked-get maybe-props# "$$typeof")))) ;; to detect react elements and portals; maybe too broad
              props# ~props]
          (~'yawn.react/createElement
            ~tag
-           (cond-> props#
-                   (not props-is-child?#)
-                   (~'yawn.convert/merge-js-props! (~'yawn.convert/convert-props maybe-props#)))
-           (when props-is-child?#
+           (~'yawn.convert/merge-js-props! props# (when is-props?# (~'yawn.convert/convert-props maybe-props#)))
+           (when-not is-props?#
              (~'yawn.convert/x maybe-props#))
            ~@(mapv compile-or-interpret-child children)))
       `(~'yawn.react/createElement
