@@ -23,15 +23,31 @@
         (sequential? x) x
         :else (list x)))
 
+
 (defn props-mode [props]
+  ;; props cases
+  ;; :no-props           - form is handled as a child element
+  ;; :map                - map is precompiled into props object
+  ;; :compiled           - form is assumed to be a compiled props object
+  ;; :to-convert         - form is converted to a props object at runtime
+  ;; :maybe-props        - check if it is a child at runtime, otherwise convert to a props object
   (or (when (map? props) :map)
-      (when (nil? props) :nil)
       (when (or (seq? props) (symbol? props))
         (let [props-meta (meta props)
               tag (or (:tag props-meta) (some->> *env* (infer/infer-type props)))]
-          (cond (or (:props props-meta) (= 'props tag)) :dynamic
-                (#{'object 'js} tag) :js-props)))
-      :no-props))
+          (cond
+            ;; [:div ^:props x]
+            (:props props-meta) :to-convert
+            ;; [:div ^props x]
+            (= 'props tag) :to-convert
+            ;; [:div (v/props ...)] tag is inferred from v/props fn
+            (= 'compiled-props tag) :compiled
+            ;; [:div ..child]
+            (#{'cljs.core/IVector
+               'yawn.view/el
+               'clj-nil} tag) :none
+            :else :maybe-props)))
+      :none))
 
 (defn literal->js
   "Efficiently emit to literal JS form"
@@ -55,46 +71,6 @@
     (let [[el id class-string] (shared/parse-tag (name tag))]
       [el (remove-empty {:id id :class class-string})])
     [tag nil]))
-
-(defn analyze-vec
-  "Given:
-  [:div.x.y#id (other)]
-  Returns:
-  [:div {:id \"id\"
-         :class [\"x\" \"y\"]}
-    (other)]"
-  [[tag & body :as vec]]
-  (let [[tag tag-props] (parse-tag tag)
-        static-props (remove-empty (merge tag-props (select-keys (meta vec) [:ref :key])))
-        tag-override (shared/custom-elements tag)
-        is-element? (= "createElement" tag-override)
-        create-element? (or (some? tag-override)
-                            is-element?
-                            (string? tag)
-                            (keyword? tag)
-                            ('js (:tag (meta tag)))
-                            (:el (meta tag)))]
-    (if create-element?
-      (let [[tag body] (if is-element? [(first body) (rest body)]
-                                       [(or tag-override tag) body])
-            props (first body)
-            mode (props-mode props)
-            props? (not= mode :no-props)]
-        [tag
-         (when props? props)
-         (children-as-list (cond-> body props? next))
-         (merge
-           {:create-element? true
-            :static-props static-props
-            :prop-mode mode})])
-      [tag nil body {:form-meta (meta vec)}])))
-
-
-(comment
-  (analyze-vec [:div#foo 'a])
-  (analyze-vec [:div.a#foo])
-  (analyze-vec [:h1.b {:className "a"}])
-  (analyze-vec '[:div (for [x xs] [:span 1])]))
 
 (defn compile-mode
   [form]
@@ -216,6 +192,60 @@
 
   (merge-props nil {:id 1}))
 
+(def props->js (comp literal->js convert-props))
+
+(defn analyze-vec
+  "Given:
+  [:div.x.y#id (other)]
+  Returns:
+  [:div {:id \"id\"
+         :class [\"x\" \"y\"]}
+    (other)]"
+  [[tag & body :as vec]]
+  (let [[tag tag-props] (parse-tag tag)
+        static-props (remove-empty (merge tag-props (select-keys (meta vec) [:ref :key])))
+        tag-override (shared/custom-elements tag)
+        is-element? (= "createElement" tag-override)
+        create-element? (or (some? tag-override)
+                            is-element?
+                            (string? tag)
+                            (keyword? tag)
+                            ('js (:tag (meta tag)))
+                            (:el (meta tag)))]
+    (if create-element?
+      (let [[tag body] (if is-element? [(first body) (rest body)]
+                                       [(or tag-override tag) body])
+            props (first body)
+            mode (props-mode props)
+            props? (not= mode :none)
+            props-expr (case mode
+                         :none (some-> static-props props->js)
+                         :map (do (assert (not (:& props)) "& deprecated, use v/props instead")
+                                  (props->js (merge-props static-props props)))
+                         :compiled (if static-props
+                                     `(~'yawn.convert/merge-js-props! ~(props->js static-props) ~props)
+                                     ~props)
+                         :to-convert (if static-props
+                                       `(~'yawn.convert/merge-js-props!
+                                          ~(props->js static-props)
+                                          (~'yawn.convert/convert-props ~props))
+                                       `(~'yawn.convert/convert-props ~props))
+                         :maybe-props (some-> static-props props->js))]
+        [tag
+         props-expr
+         (when (= mode :maybe-props) props)
+         (children-as-list (cond-> body props? next))
+         {:create-element? true
+          :prop-mode       mode}])
+      [tag nil nil body {:form-meta (meta vec)}])))
+
+
+(comment
+  (emit (analyze-vec [:div#foo 'a]))
+  (analyze-vec [:div.a#foo])
+  (analyze-vec [:h1.b {:className "a"}])
+  (analyze-vec '[:div (for [x xs] [:span 1])]))
+
 (defn compile-vec
   "Returns an unevaluated form that returns a react element"
   [v] (emit (analyze-vec v)))
@@ -244,8 +274,6 @@
         :interpret `(~'yawn.convert/x ~form)
         form)))
 
-(def props->js (comp literal->js convert-props))
-
 (defn from-element*
   ([kw]
    (let [[element tag-props] (parse-tag kw)
@@ -267,50 +295,36 @@
   (if (= 'yawn.view/el (infer/infer-type el &env))
     el
     `(let [el# ~el]
-       (if (keyword? el#)
+       (if (or (string? el#) (keyword? el#))
          (~'yawn.convert/from-element el#)
          el#))))
 
 (defn emit
   "Emits the final react js code"
-  [[tag props children {:as form-options
-                        :keys [create-element?
-                               static-props
-                               prop-mode
-                               form-meta]}]]
+  [[tag props maybe-props children {:as   form-options
+                                    :keys [create-element?
+                                           form-meta]}]]
   (if create-element?
-    `(~'yawn.react/createElement
-       ~tag
-       ~(case prop-mode
-          ;; no props, only use tag-props
-          (:nil :no-props)
-          (props->js static-props)
-
-          ;; literal props, merge and compile
-          :map
-          (do (assert (not (:& props)) "& deprecated, use v/props instead")
-              (props->js (merge-props static-props props)))
-
-          ;; runtime props, merge with compiled static-props at runtime
-          :dynamic
-          (cond->> `(~'yawn.convert/convert-props ~props)
-                   static-props
-                   (list 'yawn.convert/merge-js-props! (props->js static-props)))
-          ;; skip interpret, but add static props
-          :js-props
-          (cond->> props
-                   static-props
-                   (list 'yawn.convert/merge-js-props! (props->js static-props))))
-       ~@(mapv compile-or-interpret-child children))
-    ;; clj-element
+    (if maybe-props
+      `(let [maybe-props# ~maybe-props
+             props-is-child?# (or (vector? maybe-props#)
+                                  (~'yawn.react/valid-element? maybe-props#))
+             props# ~props]
+         (~'yawn.react/createElement
+           ~tag
+           (cond-> props#
+                   (not props-is-child?#)
+                   (~'yawn.convert/merge-js-props! (~'yawn.convert/convert-props maybe-props#)))
+           (when props-is-child?#
+             (~'yawn.convert/x maybe-props#))
+           ~@(mapv compile-or-interpret-child children)))
+      `(~'yawn.react/createElement
+         ~tag
+         ~props
+         ~@(mapv compile-or-interpret-child children)))
     `(~'yawn.infer/maybe-interpret ~(with-meta `((dynamic-el ~tag)
                                                  ~@(mapv compile-hiccup-child children))
                                                form-meta))))
-
-(comment
-  (compile '[:div.c1 {:class x}])
-  (convert-props (merge-props {:class "c1"}
-                              '{:class x})))
 (defn compile
   ([content] (compile nil content))
   ([env content]
@@ -318,6 +332,11 @@
    ;; handle ::js-ns/Item.x.y.z or ::clj-ns/Item.ns
    (binding [*env* env]
      (compile-or-interpret-child content))))
+
+(comment
+  (compile '[:div#foo.c1 {:class x}])
+  (convert-props (merge-props {:class "c1"}
+                              '{:class x})))
 
 (defmacro x [content] (compile &env content))
 (defmacro <> [content] (compile &env content))

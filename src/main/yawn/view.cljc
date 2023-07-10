@@ -151,18 +151,15 @@
 
 #?(:cljs
    (do
-     (defn props
+     (defn ^compiled-props props
        "Merges and converts props. Returns javascript object."
        ([p1 p2 & more]
-        ^object
         (reduce props (props p1 p2) more))
        ([p1 p2]
-        ^object
         (cond-> (convert/convert-props p1)
                 p2
                 (convert/merge-js-props! (convert/convert-props p2))))
-       ([p]
-        ^object (convert/convert-props p)))
+       ([p] (convert/convert-props p)))
 
      (defn merge-props
        "Merges props. Returns map."
@@ -189,4 +186,4 @@
                             `(~'yawn.convert/merge-js-props! ~p1 ~p2))
                           (first props)
                           (rest props))
-                  {:tag 'object}))))
+                  {:tag 'compiled-props}))))
