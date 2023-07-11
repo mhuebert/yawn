@@ -71,10 +71,11 @@
   (cond (not p1) p2
         (not p2) p1
         :else
-        (doseq [[k v] (js/Object.entries p2)]
-          (case k "style" (j/!update p1 "style" #(if-not % v (j/merge! % v)))
-                  "className" (j/!update p1 "className" #(if-not % v (str % " " v)))
-                  (j/!set p1 k v)))))
+        (do (doseq [[k v] (js/Object.entries p2)]
+              (case k "style" (j/!update p1 "style" #(if-not % v (j/merge! % v)))
+                      "className" (j/!update p1 "className" #(if-not % v (str % " " v)))
+                      (j/!set p1 k v)))
+            p1)))
 
 (declare x)
 
@@ -169,7 +170,8 @@
 
 (comment
  (from-element :el 'js/What {:class "foo"})
- (from-element :div.x.y {})
+ ((from-element :div#foo.x.y {}))
+ (parse-element :div#foo.x.y)
  (from-element :el js/What {})
 
  )
