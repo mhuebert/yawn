@@ -58,10 +58,10 @@
    ;; (react needs to see it)
     (set! (.-current ^js this) new-value))
   ISwap
-  (-swap! [o f] (reset! o (f o)))
-  (-swap! [o f a] (reset! o (f o a)))
-  (-swap! [o f a b] (reset! o (f o a b)))
-  (-swap! [o f a b xs] (reset! o (apply f o a b xs))))
+  (-swap! [o f] (reset! o (f current)))
+  (-swap! [o f a] (reset! o (f current a)))
+  (-swap! [o f a b] (reset! o (f current a b)))
+  (-swap! [o f a b xs] (reset! o (apply f current a b xs))))
 
 (defn use-ref
   "React hook: useRef. Can also be used like an atom."
