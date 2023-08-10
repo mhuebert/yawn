@@ -232,7 +232,7 @@
                                   (props->js (merge-props static-props props)))
                          :compiled (if static-props
                                      `(~'yawn.convert/merge-js-props! ~(props->js static-props) ~props)
-                                     ~props)
+                                     props)
                          :to-convert (if static-props
                                        `(~'yawn.convert/merge-js-props!
                                           ~(props->js static-props)
