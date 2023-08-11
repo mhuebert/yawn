@@ -86,6 +86,13 @@
        (.register js/ReactRefreshRuntime constructor fqn)
        (.performReactRefresh js/ReactRefreshRuntime))))
 
+#?(:cljs
+   (defn specify-meta! [x m]
+     (specify! x
+       IMeta
+       (-meta [_] m))
+     x))
+
 (defn defview:impl
   ([name args] (defview:impl nil name args))
   ([{:as options
@@ -104,10 +111,10 @@
                                           (~@(if (seq argv)
                                                `(j/let [~argv (j/get ~props-sym :cljs-args)])
                                                `[do])
-                                           (when refresh?# (~(:sig names)))
-                                           ~(wrap-expr `(do ~@(drop-last body)
-                                                            (~'yawn.view/x ~(last body))))))
-                                    (j/assoc! :displayName ~(:display names)))]
+                                            (when refresh?# (~(:sig names)))
+                                            ~(wrap-expr `(do ~@(drop-last body)
+                                                             (~'yawn.view/x ~(last body))))))
+                                      (j/assoc! :displayName ~(:display names)))]
 
         (defn ~name
           ~@(when docstring [docstring])
@@ -117,6 +124,8 @@
            ~(:constructor names)
            (j/obj ~@(when key-fn [:key `(~key-fn ~@simple-args)])
                   :cljs-args [~@simple-args])))
+        ~@(when opts
+            [(list 'specify! name 'IMeta `(~'-meta [~'_] ~opts))])
         (when refresh?#
           (refresh:after ~(:sig names)
                          ~(:constructor names)

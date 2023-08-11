@@ -177,11 +177,15 @@
  )
 
 (defn interpret-vec [form]
-  (util/if-defined [form-0 (nth form 0 js/undefined)]
-    (if (keyword? form-0)
-      (apply (from-element form-0) (rest form))
-      (x (apply form-0 (rest form))))
-    form))
+  (try
+    (util/if-defined [form-0 (nth form 0 js/undefined)]
+      (if (keyword? form-0)
+        (apply (from-element form-0) (rest form))
+        (x (apply form-0 (rest form))))
+      form)
+    (catch js/Error e
+      (prn :error/interpret-vec form)
+      (throw e))))
 
 (defn x
   "Convert form to a React element"
