@@ -148,7 +148,9 @@
 
      (-- "class vector may include dynamic elements"
          (compiler/convert-props '{:class ["b" c]})
-         :=> '{"className" (clojure.core/str "b " (yawn.compiler/maybe-interpret-class c))})
+         :=> '{"className" (clojure.core/str
+                            "b "
+                            (yawn.compiler/maybe-interpret-class c))})
 
      (-- "class may be dynamic - with runtime interpretation"
          (compiler/convert-props '{:class x})
@@ -171,7 +173,8 @@
                "div"
                (js-obj
                 "className"
-                (clojure.core/str "c1 y " (yawn.compiler/maybe-interpret-class d))))
+                (clojure.core/str "c1 y "
+                                  (yawn.compiler/maybe-interpret-class d))))
          )
 
      (-- "style map is also converted to camel-case"
