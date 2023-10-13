@@ -142,3 +142,5 @@
      #(deref x))))
 
 (defn ^:deprecated use-atom [x] (use-deref x))
+
+(defn use-deferred-value [x] (react/useDeferredValue x))
