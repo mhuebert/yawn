@@ -113,13 +113,13 @@
      `(let [refresh?# ~'yawn.view/refresh-enabled?
             ~(:sig names) (when refresh?# (refresh:create-sig))
             ~(:constructor names) (doto (j/fn ~(:constructor names) [~props-sym]
-                                          (~@(if (seq argv)
-                                               `(j/let [~argv (j/get ~props-sym :cljs-args)])
-                                               `[do])
-                                            (when refresh?# (~(:sig names)))
-                                            ~(wrap-expr `(do ~@(drop-last body)
-                                                             (~'yawn.view/x ~(last body))))))
-                                      (j/assoc! :displayName ~(:display names)))]
+                                          (when refresh?# (~(:sig names)))
+                                          ~(wrap-expr `(~@(if (seq argv)
+                                                            `(j/let [~argv (j/get ~props-sym :cljs-args)])
+                                                            `[do])
+                                                        ~@(drop-last body)
+                                                        (~'yawn.view/x ~(last body)))))
+                                    (j/assoc! :displayName ~(:display names)))]
 
         (defn ~name
           ~@(when docstring [docstring])
