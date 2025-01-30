@@ -96,40 +96,12 @@
      (when changed? (j/update! counter :current inc))
      (array (j/get counter :current)))))
 
-(defn- invoke-fn
-  "Invoke (f x) if f is a function, otherwise return f"
-  [f x]
-  (if (fn? f)
-    (f x)
-    f))
-
-(defn use-force-update []
-  (-> (react/useReducer inc 0)
-      (aget 1)))
-
 (defn use-state-with-deps
-  ;; see https://github.com/peterjuras/use-state-with-deps/blob/main/src/index.ts
-  "React hook: like `use-state` but will reset state to `init` when `deps` change.
-  - init may be a function, receiving previous state
-  - deps will be compared using clojure ="
+  "React hook: like `use-state` but will reset state to `init` when `deps` change."
   [init deps]
-  (let [!state (use-ref
-                (use-memo
-                 #(invoke-fn init nil)))
-        !prev-deps (use-ref deps)
-        _ (when-not (= deps @!prev-deps)
-            (reset! !state (invoke-fn init @!state))
-            (reset! !prev-deps deps))
-        force-update! (use-force-update)
-        update-fn (use-callback
-                   (fn [x]
-                     (let [prev-state @!state
-                           next-state (invoke-fn x prev-state)]
-                       (when (not= prev-state next-state)
-                         (reset! !state next-state)
-                         (force-update!))
-                       next-state)))]
-    (AtomLike. #js[@!state update-fn])))
+  (let [!state (use-state init)]
+    (use-effect #(reset! !state init) deps)
+    !state))
 
 (defn use-deref [x]
   (let [id (use-callback #js{})]
